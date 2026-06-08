@@ -11,16 +11,14 @@ from PyQt6.QtWidgets import (
     QMessageBox, QDialog, QGridLayout, QFrame
 )
 from PyQt6.QtCore import Qt
-from PyQt6.QtGui import QPixmap, QIcon
+from PyQt6.QtGui import QPixmap, QPalette, QColor  # Se agregaron QPalette y QColor para el control de tema
 from openpyxl import Workbook
-from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+from openpyxl.styles import Font, PatternFill
 
 # =====================================================================
 # CONFIGURACIÓN GENERAL
 # =====================================================================
 DB_NAME = "biblioteca_utesa.db"
-__version__ = "1.0.0"
-__role__ = "Developer Junior"
 
 # =====================================================================
 # 1. BASE DE DATOS E INICIALIZACIÓN
@@ -98,6 +96,7 @@ class LineEditTactil(QLineEdit):
                 border-radius: 8px; 
                 padding: 5px 10px;
                 background-color: white;
+                color: #1E293B;
             }
             QLineEdit:focus { border: 2px solid #0EA5E9; }
         """)
@@ -114,14 +113,6 @@ class SistemaBiblioteca(QMainWindow):
         super().__init__()
         self.setWindowTitle("UTESA Plus - Control de Biblioteca")
         self.resize(1200, 750)
-        
-        self.setStyleSheet("""
-            QMainWindow { background-color: #F8FAFC; }
-            QLabel { font-family: 'Segoe UI'; color: #1E293B; }
-            QPushButton { font-family: 'Segoe UI'; font-size: 14px; border-radius: 6px; padding: 8px; }
-            QTableWidget { background-color: white; gridline-color: #E2E8F0; border: 1px solid #CBD5E1; }
-            QHeaderView::section { background-color: #F1F5F9; font-weight: bold; border: 1px solid #E2E8F0; }
-        """)
         
         self.usuario_actual_prestamo = None
         self.stacked_widget = QStackedWidget()
@@ -142,7 +133,6 @@ class SistemaBiblioteca(QMainWindow):
         self.stacked_widget.setCurrentIndex(0)
 
     def cargar_imagen_branding(self, size=80):
-        """Carga mi_foto.png para personalizar la UI en lugar de avatares genéricos"""
         lbl_img = QLabel()
         pixmap = QPixmap("mi_foto.png")
         if not pixmap.isNull():
@@ -157,9 +147,9 @@ class SistemaBiblioteca(QMainWindow):
         layout = QHBoxLayout()
         layout.setContentsMargins(10, 10, 10, 10)
         
-        btn1 = QPushButton("Formulario & PCs")
-        btn2 = QPushButton("Kiosco Acceso Táctil")
-        btn3 = QPushButton("Métricas & Reportes")
+        btn1 = QPushButton("Formulario de Asignación de PCs")
+        btn2 = QPushButton("Acceso Táctil")
+        btn3 = QPushButton("Métricas y Reportes")
         
         for btn in [btn1, btn2, btn3]:
             btn.setMinimumHeight(40)
@@ -186,7 +176,6 @@ class SistemaBiblioteca(QMainWindow):
         
         layout_contenido = QHBoxLayout()
         
-        # Panel Izquierdo: Asignación
         sec_formulario = QVBoxLayout()
         lbl_f_titulo = QLabel("Asignación de Computadoras")
         lbl_f_titulo.setStyleSheet("font-size: 18px; font-weight: bold; color: #0F172A; margin-bottom: 10px;")
@@ -199,7 +188,7 @@ class SistemaBiblioteca(QMainWindow):
         self.txt_form_buscar.returnPressed.connect(self.buscar_usuario_formulario)
         
         self.lbl_form_datos = QLabel("Usuario: No seleccionado\nTipo: -\nCarrera: -")
-        self.lbl_form_datos.setStyleSheet("background-color: #F1F5F9; padding: 10px; border-radius: 6px; font-size: 14px;")
+        self.lbl_form_datos.setStyleSheet("background-color: #F1F5F9; color: #1E293B; padding: 10px; border-radius: 6px; font-size: 14px;")
         
         self.txt_form_fecha = QLineEdit(datetime.now().strftime("%Y-%m-%d"))
         self.txt_form_fecha.setReadOnly(True)
@@ -221,7 +210,6 @@ class SistemaBiblioteca(QMainWindow):
         sec_formulario.addWidget(btn_guardar_p)
         sec_formulario.addStretch()
         
-        # Panel Derecho: Configuración PCs
         sec_edicion = QVBoxLayout()
         lbl_e_titulo = QLabel("Editor de Formulario (PCs)")
         lbl_e_titulo.setStyleSheet("font-size: 18px; font-weight: bold; color: #0F172A; margin-bottom: 10px;")
@@ -278,6 +266,10 @@ class SistemaBiblioteca(QMainWindow):
             item_nombre = QTableWidgetItem(row[1])
             item_nombre.setData(Qt.ItemDataRole.UserRole, row[0])
             item_estado = QTableWidgetItem("Activo" if row[2] == 1 else "Inactivo")
+            
+            item_nombre.setForeground(Qt.GlobalColor.black)
+            item_estado.setForeground(Qt.GlobalColor.black)
+            
             self.table_pcs.setItem(row_idx, 0, item_nombre)
             self.table_pcs.setItem(row_idx, 1, item_estado)
         conn.close()
@@ -296,7 +288,7 @@ class SistemaBiblioteca(QMainWindow):
             self.lbl_form_datos.setText(f"Usuario: {res[1]}\nTipo: {res[2]}\nCarrera: {res[3] if res[3] else 'N/A'}")
         else:
             self.usuario_actual_prestamo = None
-            self.lbl_form_datos.setText("❌ Usuario no registrado.")
+            self.lbl_form_datos.setText("Usuario no registrado.")
             QMessageBox.warning(self, "Aviso", "El usuario no existe. Debe registrarse en el sistema.")
 
     def agregar_nueva_pc(self):
@@ -365,16 +357,16 @@ class SistemaBiblioteca(QMainWindow):
         lbl_k_tit.setStyleSheet("font-size: 32px; font-weight: bold; color: #0F172A; margin-bottom: 20px;")
         lay_ini.addWidget(lbl_k_tit)
         
-        btn_k_ingresar = QPushButton("🚪 INGRESAR AL SALÓN")
+        btn_k_ingresar = QPushButton("INGRESAR AL SALÓN")
         btn_k_ingresar.setStyleSheet("background-color: #0EA5E9; color: white; font-size: 24px; font-weight: bold; border-radius: 15px; min-height: 140px;")
         btn_k_ingresar.clicked.connect(lambda: self.kiosco_stack.setCurrentIndex(1))
         
-        btn_k_registrar = QPushButton("📝 REGISTRARME COMO NUEVO USUARIO")
+        btn_k_registrar = QPushButton("REGISTRARME COMO NUEVO USUARIO")
         btn_k_registrar.setStyleSheet("background-color: #0F172A; color: white; font-size: 24px; font-weight: bold; border-radius: 15px; min-height: 140px;")
         btn_k_registrar.clicked.connect(lambda: self.kiosco_stack.setCurrentIndex(2))
         
-        btn_k_salir = QPushButton("🔒")
-        btn_k_salir.setStyleSheet("background-color: transparent; border: none; font-size: 16px; color: #CBD5E1;")
+        btn_k_salir = QPushButton("⬅SALIR")
+        btn_k_salir.setStyleSheet("background-color: transparent; border: none; font-size: 16px; color: #64748B;")
         btn_k_salir.clicked.connect(self.salir_modo_kiosco)
         
         lay_ini.addWidget(btn_k_ingresar)
@@ -388,10 +380,10 @@ class SistemaBiblioteca(QMainWindow):
         
         lay_ing_izq = QVBoxLayout()
         lbl_ing_tit = QLabel("Digite su Cédula o Matrícula")
-        lbl_ing_tit.setStyleSheet("font-size: 24px; font-weight: bold;")
+        lbl_ing_tit.setStyleSheet("font-size: 24px; font-weight: bold; color: #1E293B;")
+        
         self.txt_ingreso_id = QLineEdit()
-        self.txt_ingreso_id.setReadOnly(True)
-        self.txt_ingreso_id.setStyleSheet("font-size: 28px; min-height: 60px; border: 3px solid #0EA5E9; border-radius: 8px; padding: 5px; background-color: white;")
+        self.txt_ingreso_id.setStyleSheet("font-size: 28px; min-height: 60px; border: 3px solid #0EA5E9; border-radius: 8px; padding: 5px; background-color: white; color: #1E293B;")
         
         btn_ing_aceptar = QPushButton("CONFIRMAR ENTRADA")
         btn_ing_aceptar.setStyleSheet("background-color: #10B981; color: white; font-size: 20px; font-weight: bold; min-height: 60px; border-radius: 8px;")
@@ -414,7 +406,7 @@ class SistemaBiblioteca(QMainWindow):
         for boton in botones_pad:
             btn_pad = QPushButton(boton)
             btn_pad.setMinimumSize(85, 85)
-            btn_pad.setStyleSheet("background-color: white; border: 2px solid #CBD5E1; font-size: 22px; font-weight: bold; border-radius: 10px;")
+            btn_pad.setStyleSheet("background-color: white; color: #1E293B; border: 2px solid #CBD5E1; font-size: 22px; font-weight: bold; border-radius: 10px;")
             btn_pad.clicked.connect(self.tecla_pad_presionada)
             grid_keypad.addWidget(btn_pad, row, col)
             col += 1
@@ -426,7 +418,7 @@ class SistemaBiblioteca(QMainWindow):
         lay_ing.addLayout(grid_keypad, 3)
         self.kiosco_stack.addWidget(self.p_kiosco_ingreso)
         
-        # 2.3 REGISTRO TÁCTIL CON FOTO PERSONALIZADA
+        # 2.3 REGISTRO TÁCTIL
         self.p_kiosco_registro = QWidget()
         lay_reg = QVBoxLayout(self.p_kiosco_registro)
         
@@ -434,7 +426,6 @@ class SistemaBiblioteca(QMainWindow):
         lbl_reg_tit = QLabel("Formulario de Registro")
         lbl_reg_tit.setStyleSheet("font-size: 24px; font-weight: bold; color: #0F172A;")
         
-        # Carga dinámica de la foto de proyecto (mi_foto.png)
         lbl_branding = self.cargar_imagen_branding(size=70)
         lay_header_reg.addWidget(lbl_reg_tit)
         lay_header_reg.addStretch()
@@ -449,7 +440,7 @@ class SistemaBiblioteca(QMainWindow):
         
         self.cmb_reg_tipo = QComboBox()
         self.cmb_reg_tipo.addItems(["Estudiante", "Profesor", "Empleado", "Invitado"])
-        self.cmb_reg_tipo.setStyleSheet("font-size: 18px; min-height: 50px;")
+        self.cmb_reg_tipo.setStyleSheet("background-color: white; color: #1E293B; font-size: 18px; min-height: 50px; border: 1px solid #CBD5E1;")
         self.cmb_reg_tipo.currentTextChanged.connect(self.evaluar_obligatoriedad_carrera)
         
         self.txt_reg_carrera = LineEditTactil()
@@ -463,7 +454,7 @@ class SistemaBiblioteca(QMainWindow):
         form_reg.addRow("", self.lbl_alerta_carrera)
         lay_reg.addLayout(form_reg)
         
-        btn_reg_guardar = QPushButton("💾 GUARDAR REGISTRO E INGRESAR")
+        btn_reg_guardar = QPushButton("GUARDAR REGISTRO E INGRESAR")
         btn_reg_guardar.setStyleSheet("background-color: #10B981; color: white; font-size: 20px; font-weight: bold; min-height: 60px; border-radius: 8px;")
         btn_reg_guardar.clicked.connect(self.procesar_registro_usuario)
         
@@ -490,6 +481,7 @@ class SistemaBiblioteca(QMainWindow):
         txt_pass.setEchoMode(QLineEdit.EchoMode.Password)
         lay_d.addWidget(txt_pass)
         btn_d = QPushButton("Validar")
+        btn_d.setStyleSheet("background-color: #0F172A; color: white; min-height: 35px;")
         btn_d.clicked.connect(dialogo.accept)
         lay_d.addWidget(btn_d)
         
@@ -586,7 +578,7 @@ class SistemaBiblioteca(QMainWindow):
         form_m.addRow("Seleccionar Rango:", self.cmb_periodos)
         layout_global.addLayout(form_m)
         
-        btn_generar_excel = QPushButton("📊 Generar Estadística en Excel (.xlsx)")
+        btn_generar_excel = QPushButton("Generar Estadística en Excel")
         btn_generar_excel.setStyleSheet("background-color: #1E293B; color: white; font-size: 16px; font-weight: bold; min-height: 55px; border-radius: 8px;")
         btn_generar_excel.clicked.connect(self.exportar_metricas_excel)
         layout_global.addWidget(btn_generar_excel)
@@ -670,6 +662,36 @@ class SistemaBiblioteca(QMainWindow):
 if __name__ == "__main__":
     inicializar_bd()
     app = QApplication(sys.argv)
+    
+    # -----------------------------------------------------------------
+    # SOLUCIÓN DE CONTEXTO CLARO ABSOLUTO (INMUNIDAD MODO OSCURO)
+    # -----------------------------------------------------------------
+    # Forzamos una paleta de colores clara nativa del software a la aplicación
+    paleta_clara = QPalette()
+    paleta_clara.setColor(QPalette.ColorRole.Window, QColor("#F8FAFC"))
+    paleta_clara.setColor(QPalette.ColorRole.WindowText, QColor("#1E293B"))
+    paleta_clara.setColor(QPalette.ColorRole.Base, QColor("#FFFFFF"))
+    paleta_clara.setColor(QPalette.ColorRole.AlternateBase, QColor("#F1F5F9"))
+    paleta_clara.setColor(QPalette.ColorRole.Text, QColor("#1E293B"))
+    paleta_clara.setColor(QPalette.ColorRole.Button, QColor("#E2E8F0"))
+    paleta_clara.setColor(QPalette.ColorRole.ButtonText, QColor("#1E293B"))
+    paleta_clara.setColor(QPalette.ColorRole.Highlight, QColor("#0EA5E9"))
+    paleta_clara.setColor(QPalette.ColorRole.HighlightedText, QColor("#FFFFFF"))
+    app.setPalette(paleta_clara)
+    
+    # Aplicamos las Hojas de Estilo (QSS) globales a nivel de la 'app'
+    # Esto asegura que afecte también a sub-ventanas flotantes como QMessageBox, QDialog y vistas de ComboBox.
+    app.setStyleSheet("""
+        QMainWindow, QDialog, QMessageBox { background-color: #F8FAFC; }
+        QLabel { font-family: 'Segoe UI'; color: #1E293B; }
+        QLineEdit { font-family: 'Segoe UI'; color: #1E293B; background-color: white; border: 1px solid #CBD5E1; border-radius: 6px; padding: 5px; }
+        QTableWidget { background-color: white; color: #1E293B; gridline-color: #E2E8F0; border: 1px solid #CBD5E1; font-size: 14px; }
+        QHeaderView::section { background-color: #F1F5F9; color: #1E293B; font-weight: bold; border: 1px solid #E2E8F0; font-size: 14px; padding: 5px; }
+        QComboBox { background-color: white; color: #1E293B; border: 1px solid #CBD5E1; border-radius: 6px; padding: 5px; min-height: 30px; }
+        QComboBox QAbstractItemView { background-color: white; color: #1E293B; selection-background-color: #0EA5E9; selection-color: white; }
+        QPushButton { font-family: 'Segoe UI'; font-size: 14px; border-radius: 6px; padding: 8px; }
+    """)
+    
     ventana = SistemaBiblioteca()
     ventana.show()
     sys.exit(app.exec())
