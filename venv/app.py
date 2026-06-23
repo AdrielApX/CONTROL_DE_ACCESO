@@ -2,6 +2,7 @@ import sys
 import os
 import sqlite3
 import subprocess
+import traceback
 from datetime import datetime, timedelta
 
 from PyQt6.QtWidgets import (
@@ -11,7 +12,7 @@ from PyQt6.QtWidgets import (
     QMessageBox, QDialog, QGridLayout, QFrame
 )
 from PyQt6.QtCore import Qt
-from PyQt6.QtGui import QPixmap, QPalette, QColor  # Se agregaron QPalette y QColor para el control de tema
+from PyQt6.QtGui import QPixmap, QPalette, QColor
 from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill
 
@@ -31,7 +32,8 @@ def inicializar_bd():
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS usuarios (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
-        identificacion TEXT UNIQUE NOT NULL,
+        cedula TEXT UNIQUE NOT NULL,
+        matricula TEXT UNIQUE,
         nombre_completo TEXT NOT NULL,
         tipo_usuario TEXT NOT NULL,
         carrera TEXT
@@ -279,7 +281,7 @@ class SistemaBiblioteca(QMainWindow):
         if not ident: return
         conn = sqlite3.connect(DB_NAME)
         cursor = conn.cursor()
-        cursor.execute("SELECT id, nombre_completo, tipo_usuario, carrera FROM usuarios WHERE identificacion = ?", (ident,))
+        cursor.execute("SELECT id, nombre_completo, tipo_usuario, carrera FROM usuarios WHERE cedula = ? OR matricula = ?", (ident, ident))
         res = cursor.fetchone()
         conn.close()
         
@@ -435,23 +437,25 @@ class SistemaBiblioteca(QMainWindow):
         form_reg = QFormLayout()
         form_reg.setSpacing(15)
         
-        self.txt_reg_id = LineEditTactil()
+        self.txt_reg_cedula = LineEditTactil()
+        self.txt_reg_matricula = LineEditTactil()
         self.txt_reg_nombre = LineEditTactil()
         
         self.cmb_reg_tipo = QComboBox()
         self.cmb_reg_tipo.addItems(["Estudiante", "Profesor", "Empleado", "Invitado"])
         self.cmb_reg_tipo.setStyleSheet("background-color: white; color: #1E293B; font-size: 18px; min-height: 50px; border: 1px solid #CBD5E1;")
-        self.cmb_reg_tipo.currentTextChanged.connect(self.evaluar_obligatoriedad_carrera)
+        self.cmb_reg_tipo.currentTextChanged.connect(self.evaluar_obligatoriedad_estudiante)
         
         self.txt_reg_carrera = LineEditTactil()
-        self.lbl_alerta_carrera = QLabel("* Obligatorio para Estudiantes")
-        self.lbl_alerta_carrera.setStyleSheet("color: #EF4444; font-weight: bold; font-size: 13px;")
+        self.lbl_alerta_estudiante = QLabel("* Matrícula y Carrera obligatorias para Estudiantes")
+        self.lbl_alerta_estudiante.setStyleSheet("color: #EF4444; font-weight: bold; font-size: 13px;")
         
-        form_reg.addRow(QLabel("Cédula / Matrícula:"), self.txt_reg_id)
+        form_reg.addRow(QLabel("Cédula:"), self.txt_reg_cedula)
+        form_reg.addRow(QLabel("Matrícula:"), self.txt_reg_matricula)
         form_reg.addRow(QLabel("Nombre Completo:"), self.txt_reg_nombre)
         form_reg.addRow(QLabel("Tipo de Usuario:"), self.cmb_reg_tipo)
         form_reg.addRow(QLabel("Carrera:"), self.txt_reg_carrera)
-        form_reg.addRow("", self.lbl_alerta_carrera)
+        form_reg.addRow("", self.lbl_alerta_estudiante)
         lay_reg.addLayout(form_reg)
         
         btn_reg_guardar = QPushButton("GUARDAR REGISTRO E INGRESAR")
@@ -500,17 +504,18 @@ class SistemaBiblioteca(QMainWindow):
         elif texto_tecla == "Borrar": self.txt_ingreso_id.setText(texto_actual[:-1])
         else: self.txt_ingreso_id.setText(texto_actual + texto_tecla)
 
-    def evaluar_obligatoriedad_carrera(self, tipo):
+    def evaluar_obligatoriedad_estudiante(self, tipo):
         if tipo == "Estudiante":
-            self.lbl_alerta_carrera.setText("* Obligatorio")
-            self.lbl_alerta_carrera.setStyleSheet("color: #EF4444; font-weight: bold;")
+            self.lbl_alerta_estudiante.setText("* Matrícula y Carrera obligatorias")
+            self.lbl_alerta_estudiante.setStyleSheet("color: #EF4444; font-weight: bold;")
         else:
-            self.lbl_alerta_carrera.setText("Opcional")
-            self.lbl_alerta_carrera.setStyleSheet("color: #64748B;")
+            self.lbl_alerta_estudiante.setText("Matrícula y Carrera opcionales")
+            self.lbl_alerta_estudiante.setStyleSheet("color: #64748B;")
 
     def limpiar_volver_kiosco(self):
         self.txt_ingreso_id.clear()
-        self.txt_reg_id.clear()
+        self.txt_reg_cedula.clear()
+        self.txt_reg_matricula.clear()
         self.txt_reg_nombre.clear()
         self.txt_reg_carrera.clear()
         self.cmb_reg_tipo.setCurrentIndex(0)
@@ -521,7 +526,7 @@ class SistemaBiblioteca(QMainWindow):
         if not ident: return
         conn = sqlite3.connect(DB_NAME)
         cursor = conn.cursor()
-        cursor.execute("SELECT id, nombre_completo FROM usuarios WHERE identificacion = ?", (ident,))
+        cursor.execute("SELECT id, nombre_completo FROM usuarios WHERE cedula = ? OR matricula = ?", (ident, ident))
         res = cursor.fetchone()
         if res:
             cursor.execute("INSERT INTO accesos_salon (usuario_id) VALUES (?)", (res[0],))
@@ -533,22 +538,26 @@ class SistemaBiblioteca(QMainWindow):
         conn.close()
 
     def procesar_registro_usuario(self):
-        ident = self.txt_reg_id.text().strip()
+        cedula = self.txt_reg_cedula.text().strip()
+        matricula = self.txt_reg_matricula.text().strip()
         nombre = self.txt_reg_nombre.text().strip()
         tipo = self.cmb_reg_tipo.currentText()
         carrera = self.txt_reg_carrera.text().strip()
         
-        if not ident or not nombre: return
-        if tipo == "Estudiante" and not carrera:
-            QMessageBox.warning(self, "Aviso", "Indique su carrera.")
+        if not cedula or not nombre: 
+            QMessageBox.warning(self, "Aviso", "La Cédula y el Nombre son campos obligatorios.")
+            return
+            
+        if tipo == "Estudiante" and (not matricula or not carrera):
+            QMessageBox.warning(self, "Aviso", "Indique su Matrícula y Carrera (Obligatorio para Estudiantes).")
             return
             
         conn = sqlite3.connect(DB_NAME)
         cursor = conn.cursor()
         try:
             cursor.execute(
-                "INSERT INTO usuarios (identificacion, nombre_completo, tipo_usuario, carrera) VALUES (?, ?, ?, ?)",
-                (ident, nombre, tipo, carrera if tipo == "Estudiante" else None)
+                "INSERT INTO usuarios (cedula, matricula, nombre_completo, tipo_usuario, carrera) VALUES (?, ?, ?, ?, ?)",
+                (cedula, matricula if matricula else None, nombre, tipo, carrera if tipo == "Estudiante" else None)
             )
             nuevo_id = cursor.lastrowid
             cursor.execute("INSERT INTO accesos_salon (usuario_id) VALUES (?)", (nuevo_id,))
@@ -556,7 +565,7 @@ class SistemaBiblioteca(QMainWindow):
             QMessageBox.information(self, "Éxito", f"¡Registro completado {nombre}!")
             self.limpiar_volver_kiosco()
         except sqlite3.IntegrityError:
-            QMessageBox.critical(self, "Error", "Esa Cédula o Matrícula ya existe.")
+            QMessageBox.critical(self, "Error", "Esa Cédula o Matrícula ya existe en el sistema.")
         finally:
             conn.close()
 
@@ -599,74 +608,88 @@ class SistemaBiblioteca(QMainWindow):
             
         return ini.strftime("%Y-%m-%d 00:00:00"), fin
 
+    # =============== CORRECCIÓN PRINCIPAL APLICADA AQUÍ ===============
     def exportar_metricas_excel(self):
-        f_inicio, f_fin = self.calcular_fechas()
-        conn = sqlite3.connect(DB_NAME)
-        cursor = conn.cursor()
-        
-        cursor.execute("SELECT nombre_pc FROM equipos ORDER BY id ASC")
-        lista_pcs = [row[0] for row in cursor.fetchall()]
-        
-        frag_sql = [f"SUM(CASE WHEN e.nombre_pc = '{pc}' THEN 1 ELSE 0 END) AS [{pc}]" for pc in lista_pcs]
-        cols_pcs = ", " + ", ".join(frag_sql) if frag_sql else ""
-        
-        query = f"""
-        SELECT 
-            u.nombre_completo AS [Nombre],
-            u.identificacion AS [ID],
-            u.tipo_usuario AS [Tipo],
-            COALESCE(u.carrera, 'N/A') AS [Carrera],
-            (SELECT COUNT(*) FROM accesos_salon a WHERE a.usuario_id = u.id AND datetime(a.fecha_hora) BETWEEN datetime(?) AND datetime(?)) AS [Veces Salón]
-            {cols_pcs}
-        FROM usuarios u
-        LEFT JOIN prestamos_pc p ON u.id = p.usuario_id AND date(p.fecha_prestamo) BETWEEN date(?) AND date(?)
-        LEFT JOIN equipos e ON p.equipo_id = e.id
-        GROUP BY u.id
-        ORDER BY u.nombre_completo ASC;
-        """
-        
         try:
+            f_inicio, f_fin = self.calcular_fechas()
+            conn = sqlite3.connect(DB_NAME)
+            cursor = conn.cursor()
+            
+            cursor.execute("SELECT nombre_pc FROM equipos ORDER BY id ASC")
+            lista_pcs = [row[0] for row in cursor.fetchall()]
+            
+            frag_sql = [f"SUM(CASE WHEN e.nombre_pc = '{pc}' THEN 1 ELSE 0 END) AS [{pc}]" for pc in lista_pcs]
+            cols_pcs = ", " + ", ".join(frag_sql) if frag_sql else ""
+            
+            query = f"""
+            SELECT 
+                u.nombre_completo AS [Nombre],
+                u.cedula AS [Cédula],
+                COALESCE(u.matricula, 'N/A') AS [Matrícula],
+                u.tipo_usuario AS [Tipo],
+                COALESCE(u.carrera, 'N/A') AS [Carrera],
+                (SELECT COUNT(*) FROM accesos_salon a WHERE a.usuario_id = u.id AND datetime(a.fecha_hora) BETWEEN datetime(?) AND datetime(?)) AS [Veces Salón]
+                {cols_pcs}
+            FROM usuarios u
+            LEFT JOIN prestamos_pc p ON u.id = p.usuario_id AND date(p.fecha_prestamo) BETWEEN date(?) AND date(?)
+            LEFT JOIN equipos e ON p.equipo_id = e.id
+            GROUP BY u.id
+            ORDER BY u.nombre_completo ASC;
+            """
+            
             cursor.execute(query, (f_inicio, f_fin, f_inicio, f_fin))
             headers = [desc[0] for desc in cursor.description]
             datos = cursor.fetchall()
-        finally:
-            conn.close()
             
-        wb = Workbook()
-        ws = wb.active
-        ws.title = "Métricas"
-        
-        f_head = Font(bold=True, color="FFFFFF")
-        fill_head = PatternFill(start_color="1E293B", end_color="1E293B", fill_type="solid")
-        
-        for col_idx, text in enumerate(headers, 1):
-            cell = ws.cell(row=1, column=col_idx, value=text)
-            cell.font = f_head
-            cell.fill = fill_head
+            wb = Workbook()
+            ws = wb.active
+            ws.title = "Métricas"
             
-        for r_idx, fila in enumerate(datos, 2):
-            for c_idx, val in enumerate(fila, 1):
-                ws.cell(row=r_idx, column=c_idx, value=val)
+            f_head = Font(bold=True, color="FFFFFF")
+            fill_head = PatternFill(start_color="1E293B", end_color="1E293B", fill_type="solid")
+            
+            for col_idx, text in enumerate(headers, 1):
+                cell = ws.cell(row=1, column=col_idx, value=text)
+                cell.font = f_head
+                cell.fill = fill_head
                 
-        for col in ws.columns:
-            l_max = max(len(str(c.value or '')) for c in col)
-            ws.column_dimensions[col[0].column_letter].width = max(l_max + 2, 10)
+            for r_idx, fila in enumerate(datos, 2):
+                for c_idx, val in enumerate(fila, 1):
+                    ws.cell(row=r_idx, column=c_idx, value=val)
+                    
+            for col in ws.columns:
+                l_max = max(len(str(c.value or '')) for c in col)
+                ws.column_dimensions[col[0].column_letter].width = max(l_max + 2, 10)
+                
+            nombre = f"Reporte_Biblioteca_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
             
-        nombre = f"Reporte_Biblioteca_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
-        wb.save(nombre)
-        QMessageBox.information(self, "Excel", f"Guardado: {nombre}")
+            # Intento guardar el archivo, aquí es donde suele ocurrir el PermissionError
+            wb.save(nombre)
+            
+            # Mensaje de éxito si todo salió bien
+            QMessageBox.information(self, "Excel Generado", f"El archivo se guardó correctamente como:\n{nombre}")
+
+        except PermissionError:
+            QMessageBox.critical(self, "Archivo Abierto", "No se pudo generar el Excel.\nParece que tienes un reporte anterior abierto. Cierra Excel e inténtalo de nuevo.")
+        
+        except Exception as error_general:
+            # En caso de que sea otro error, lo mostramos en pantalla sin cerrar el programa
+            mensaje_error = traceback.format_exc()
+            print(mensaje_error) # Se imprime en la consola de VS Code
+            QMessageBox.critical(self, "Error Crítico", f"Ocurrió un error al generar el Excel:\n\n{str(error_general)}\n\nRevisa la terminal para más detalles.")
+        
+        finally:
+            # Asegurarse de cerrar la base de datos sin importar si hubo error o no
+            if 'conn' in locals():
+                conn.close()
 
 # =====================================================================
-# INICIAR APLICACIÓN
+# INICIAR APLICACIÓN (CORREGIDO Y COMPLETADO)
 # =====================================================================
 if __name__ == "__main__":
     inicializar_bd()
     app = QApplication(sys.argv)
     
-    # -----------------------------------------------------------------
-    # SOLUCIÓN DE CONTEXTO CLARO ABSOLUTO (INMUNIDAD MODO OSCURO)
-    # -----------------------------------------------------------------
-    # Forzamos una paleta de colores clara nativa del software a la aplicación
     paleta_clara = QPalette()
     paleta_clara.setColor(QPalette.ColorRole.Window, QColor("#F8FAFC"))
     paleta_clara.setColor(QPalette.ColorRole.WindowText, QColor("#1E293B"))
@@ -679,8 +702,6 @@ if __name__ == "__main__":
     paleta_clara.setColor(QPalette.ColorRole.HighlightedText, QColor("#FFFFFF"))
     app.setPalette(paleta_clara)
     
-    # Aplicamos las Hojas de Estilo (QSS) globales a nivel de la 'app'
-    # Esto asegura que afecte también a sub-ventanas flotantes como QMessageBox, QDialog y vistas de ComboBox.
     app.setStyleSheet("""
         QMainWindow, QDialog, QMessageBox { background-color: #F8FAFC; }
         QLabel { font-family: 'Segoe UI'; color: #1E293B; }
