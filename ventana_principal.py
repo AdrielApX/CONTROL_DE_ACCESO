@@ -1,5 +1,5 @@
 import traceback
-import sqlite3 # Importado solo para capturar el IntegrityError
+import sqlite3
 from datetime import datetime, timedelta
 
 from PyQt6.QtWidgets import (
@@ -13,7 +13,6 @@ from PyQt6.QtGui import QPixmap
 from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill
 
-# ---> AQUÍ CONECTAMOS TUS ARCHIVOS EXTERNOS <---
 import base_datos
 from componentes_tactiles import LineEditTactil
 
@@ -72,6 +71,7 @@ class SistemaBiblioteca(QMainWindow):
         btn3.clicked.connect(lambda: self.stacked_widget.setCurrentIndex(2))
         
         if index_actual == 0: btn1.setStyleSheet("background-color: #0EA5E9; color: white; font-weight: bold;")
+        if index_actual == 1: btn2.setStyleSheet("background-color: #0EA5E9; color: white; font-weight: bold;")
         if index_actual == 2: btn3.setStyleSheet("background-color: #0EA5E9; color: white; font-weight: bold;")
         
         layout.addWidget(btn1)
@@ -223,11 +223,22 @@ class SistemaBiblioteca(QMainWindow):
         self.lbl_form_datos.setText("Usuario: No seleccionado\nTipo: -\nCarrera: -")
         self.usuario_actual_prestamo = None
 
+    # -----------------------------------------------------------------
+    # VISTA 2: KIOSCO TÁCTIL (MODIFICADO A VENTANA COMPARTIDA)
+    # -----------------------------------------------------------------
     def crear_vista_kiosco_acceso(self):
-        self.layout_kiosco_master = QVBoxLayout(self.vista_kiosco_acceso)
-        self.layout_kiosco_master.setContentsMargins(40, 40, 40, 40)
+        layout_global = QVBoxLayout(self.vista_kiosco_acceso)
+        
+        # AGREGAMOS LA BARRA DE NAVEGACIÓN DENTRO DE UN WIDGET PARA PODER OCULTARLA
+        self.nav_widget_kiosco = QWidget()
+        self.nav_widget_kiosco.setLayout(self.barra_navegacion(1))
+        layout_global.addWidget(self.nav_widget_kiosco)
+        
+        # CONTENEDOR INTERNO DEL KIOSCO
+        layout_kiosco_master = QVBoxLayout()
+        layout_kiosco_master.setContentsMargins(40, 40, 40, 40)
         self.kiosco_stack = QStackedWidget()
-        self.layout_kiosco_master.addWidget(self.kiosco_stack)
+        layout_kiosco_master.addWidget(self.kiosco_stack)
         
         # 2.1 INICIO KIOSCO
         self.p_kiosco_inicio = QWidget()
@@ -247,13 +258,14 @@ class SistemaBiblioteca(QMainWindow):
         btn_k_registrar.setStyleSheet("background-color: #0F172A; color: white; font-size: 24px; font-weight: bold; border-radius: 15px; min-height: 140px;")
         btn_k_registrar.clicked.connect(lambda: self.kiosco_stack.setCurrentIndex(2))
         
-        btn_k_salir = QPushButton("⬅SALIR")
-        btn_k_salir.setStyleSheet("background-color: transparent; border: none; font-size: 16px; color: #64748B;")
-        btn_k_salir.clicked.connect(self.salir_modo_kiosco)
+        # BOTÓN ALTERNADOR (Reemplaza al antiguo "Salir")
+        self.btn_k_fullscreen = QPushButton("🖵 BLOQUEAR EN PANTALLA COMPLETA")
+        self.btn_k_fullscreen.setStyleSheet("background-color: #1E293B; color: white; font-size: 16px; font-weight: bold; border-radius: 8px; padding: 15px;")
+        self.btn_k_fullscreen.clicked.connect(self.alternar_pantalla_completa)
         
         lay_ini.addWidget(btn_k_ingresar)
         lay_ini.addWidget(btn_k_registrar)
-        lay_ini.addWidget(btn_k_salir, 0, Qt.AlignmentFlag.AlignLeft)
+        lay_ini.addWidget(self.btn_k_fullscreen, 0, Qt.AlignmentFlag.AlignCenter)
         self.kiosco_stack.addWidget(self.p_kiosco_inicio)
         
         # 2.2 KEYPAD DE INGRESO
@@ -350,31 +362,45 @@ class SistemaBiblioteca(QMainWindow):
         lay_reg.addStretch()
         lay_reg.addWidget(btn_reg_volver)
         self.kiosco_stack.addWidget(self.p_kiosco_registro)
+        
+        # Agregamos el contenido al layout global
+        layout_global.addLayout(layout_kiosco_master)
 
     def activar_modo_kiosco(self):
+        # AHORA INICIA DE FORMA NORMAL (VENTANA), SIN FORZAR PANTALLA COMPLETA
         self.stacked_widget.setCurrentIndex(1)
         self.kiosco_stack.setCurrentIndex(0)
-        self.showFullScreen()
 
-    def salir_modo_kiosco(self):
-        dialogo = QDialog(self)
-        dialogo.setWindowTitle("Seguridad")
-        lay_d = QVBoxLayout(dialogo)
-        lay_d.addWidget(QLabel("Contraseña administrativa:"))
-        txt_pass = QLineEdit()
-        txt_pass.setEchoMode(QLineEdit.EchoMode.Password)
-        lay_d.addWidget(txt_pass)
-        btn_d = QPushButton("Validar")
-        btn_d.setStyleSheet("background-color: #0F172A; color: white; min-height: 35px;")
-        btn_d.clicked.connect(dialogo.accept)
-        lay_d.addWidget(btn_d)
-        
-        if dialogo.exec() == QDialog.DialogCode.Accepted:
-            if txt_pass.text() == "1234":
-                self.showNormal()
-                self.stacked_widget.setCurrentIndex(0)
-            else:
-                QMessageBox.critical(self, "Error", "Clave incorrecta")
+    # ESTA FUNCIÓN SE ENCARGA DEL SECUESTRO DE PANTALLA (NUEVA LÓGICA)
+    def alternar_pantalla_completa(self):
+        if self.isFullScreen():
+            # PEDIR CLAVE PARA SALIR DEL SECUESTRO
+            dialogo = QDialog(self)
+            dialogo.setWindowTitle("Seguridad")
+            lay_d = QVBoxLayout(dialogo)
+            lay_d.addWidget(QLabel("Contraseña administrativa para desbloquear:"))
+            txt_pass = QLineEdit()
+            txt_pass.setEchoMode(QLineEdit.EchoMode.Password)
+            lay_d.addWidget(txt_pass)
+            btn_d = QPushButton("Desbloquear y Restaurar Ventana")
+            btn_d.setStyleSheet("background-color: #0F172A; color: white; min-height: 35px;")
+            btn_d.clicked.connect(dialogo.accept)
+            lay_d.addWidget(btn_d)
+            
+            if dialogo.exec() == QDialog.DialogCode.Accepted:
+                if txt_pass.text() == "1234":
+                    self.showMaximized() # O self.showNormal() dependiendo de tu gusto
+                    self.nav_widget_kiosco.show() # Mostramos la barra superior
+                    self.btn_k_fullscreen.setText("🖵 BLOQUEAR EN PANTALLA COMPLETA")
+                    self.btn_k_fullscreen.setStyleSheet("background-color: #1E293B; color: white; font-size: 16px; font-weight: bold; border-radius: 8px; padding: 15px;")
+                else:
+                    QMessageBox.critical(self, "Error", "Clave incorrecta")
+        else:
+            # SECUESTRAR SIN PEDIR CLAVE
+            self.showFullScreen()
+            self.nav_widget_kiosco.hide() # Ocultamos la barra para que no escapen
+            self.btn_k_fullscreen.setText("🔓 DESBLOQUEAR Y SALIR DE PANTALLA COMPLETA")
+            self.btn_k_fullscreen.setStyleSheet("background-color: #EF4444; color: white; font-size: 16px; font-weight: bold; border-radius: 8px; padding: 15px;")
 
     def tecla_pad_presionada(self):
         btn = self.sender()
@@ -434,6 +460,9 @@ class SistemaBiblioteca(QMainWindow):
         except sqlite3.IntegrityError:
             QMessageBox.critical(self, "Error", "Esa Cédula o Matrícula ya existe en el sistema.")
 
+    # -----------------------------------------------------------------
+    # VISTA 3: MÉTRICAS Y EXCEL
+    # -----------------------------------------------------------------
     def crear_vista_metricas(self):
         layout_global = QVBoxLayout(self.vista_metricas)
         layout_global.addLayout(self.barra_navegacion(2))
@@ -473,8 +502,6 @@ class SistemaBiblioteca(QMainWindow):
     def exportar_metricas_excel(self):
         try:
             f_inicio, f_fin = self.calcular_fechas()
-            
-            # Reemplazamos toda la conexión cruda pidiendo los datos limpios a base_datos
             headers, datos = base_datos.obtener_datos_metricas(f_inicio, f_fin)
             
             wb = Workbook()
