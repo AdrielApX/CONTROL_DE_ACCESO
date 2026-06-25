@@ -1,111 +1,21 @@
-import sys
-import os
-import sqlite3
-import subprocess
 import traceback
+import sqlite3 # Importado solo para capturar el IntegrityError
 from datetime import datetime, timedelta
 
 from PyQt6.QtWidgets import (
-    QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, 
+    QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, 
     QLabel, QLineEdit, QPushButton, QComboBox, QTableWidget, 
     QTableWidgetItem, QStackedWidget, QFormLayout, QHeaderView, 
     QMessageBox, QDialog, QGridLayout, QFrame
 )
 from PyQt6.QtCore import Qt
-from PyQt6.QtGui import QPixmap, QPalette, QColor
+from PyQt6.QtGui import QPixmap
 from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill
 
-# =====================================================================
-# CONFIGURACIÓN GENERAL
-# =====================================================================
-DB_NAME = "biblioteca_utesa.db"
-
-# =====================================================================
-# 1. BASE DE DATOS E INICIALIZACIÓN
-# =====================================================================
-def inicializar_bd():
-    conn = sqlite3.connect(DB_NAME)
-    cursor = conn.cursor()
-    cursor.execute("PRAGMA foreign_keys = ON;")
-    
-    cursor.execute("""
-    CREATE TABLE IF NOT EXISTS usuarios (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        cedula TEXT UNIQUE NOT NULL,
-        matricula TEXT UNIQUE,
-        nombre_completo TEXT NOT NULL,
-        tipo_usuario TEXT NOT NULL,
-        carrera TEXT
-    );
-    """)
-    
-    cursor.execute("""
-    CREATE TABLE IF NOT EXISTS equipos (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        nombre_pc TEXT UNIQUE NOT NULL,
-        activo INTEGER DEFAULT 1
-    );
-    """)
-    
-    cursor.execute("""
-    CREATE TABLE IF NOT EXISTS accesos_salon (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        usuario_id INTEGER,
-        fecha_hora TEXT DEFAULT (datetime('now', 'localtime')),
-        FOREIGN KEY(usuario_id) REFERENCES usuarios(id) ON DELETE CASCADE
-    );
-    """)
-    
-    cursor.execute("""
-    CREATE TABLE IF NOT EXISTS prestamos_pc (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        usuario_id INTEGER,
-        equipo_id INTEGER,
-        fecha_prestamo TEXT DEFAULT (date('now', 'localtime')),
-        FOREIGN KEY(usuario_id) REFERENCES usuarios(id) ON DELETE CASCADE,
-        FOREIGN KEY(equipo_id) REFERENCES equipos(id) ON DELETE CASCADE
-    );
-    """)
-    
-    cursor.execute("SELECT COUNT(*) FROM equipos")
-    if cursor.fetchone()[0] == 0:
-        for i in range(1, 5):
-            cursor.execute("INSERT INTO equipos (nombre_pc, activo) VALUES (?, 1)", (f"PC {i}",))
-            
-    conn.commit()
-    conn.close()
-
-def abrir_teclado_virtual():
-    try:
-        tabtip = r"C:\Program Files\Common Files\microsoft shared\ink\TabTip.exe"
-        if os.path.exists(tabtip):
-            subprocess.Popen(tabtip)
-    except Exception:
-        pass
-
-# =====================================================================
-# 2. COMPONENTES TÁCTILES PERSONALIZADOS
-# =====================================================================
-class LineEditTactil(QLineEdit):
-    def __init__(self, parent=None):
-        super().__init__(parent)
-        self.setStyleSheet("""
-            QLineEdit {
-                font-size: 18px; 
-                min-height: 50px; 
-                border: 2px solid #CBD5E1; 
-                border-radius: 8px; 
-                padding: 5px 10px;
-                background-color: white;
-                color: #1E293B;
-            }
-            QLineEdit:focus { border: 2px solid #0EA5E9; }
-        """)
-    
-    def focusInEvent(self, event):
-        super().focusInEvent(event)
-        abrir_teclado_virtual()
+# ---> AQUÍ CONECTAMOS TUS ARCHIVOS EXTERNOS <---
+import base_datos
+from componentes_tactiles import LineEditTactil
 
 # =====================================================================
 # 3. INTERFAZ PRINCIPAL
@@ -169,9 +79,6 @@ class SistemaBiblioteca(QMainWindow):
         layout.addWidget(btn3)
         return layout
 
-    # -----------------------------------------------------------------
-    # VISTA 1: FORMULARIO PRINCIPAL Y EDICIÓN DE PC'S
-    # -----------------------------------------------------------------
     def crear_vista_formulario_principal(self):
         layout_global = QVBoxLayout(self.vista_formulario_principal)
         layout_global.addLayout(self.barra_navegacion(0))
@@ -251,19 +158,14 @@ class SistemaBiblioteca(QMainWindow):
 
     def actualizar_combo_pcs(self):
         self.cmb_form_pcs.clear()
-        conn = sqlite3.connect(DB_NAME)
-        cursor = conn.cursor()
-        cursor.execute("SELECT id, nombre_pc FROM equipos WHERE activo = 1")
-        for row in cursor.fetchall():
+        equipos = base_datos.obtener_pcs_activas()
+        for row in equipos:
             self.cmb_form_pcs.addItem(row[1], row[0])
-        conn.close()
 
     def actualizar_tabla_pcs(self):
         self.table_pcs.setRowCount(0)
-        conn = sqlite3.connect(DB_NAME)
-        cursor = conn.cursor()
-        cursor.execute("SELECT id, nombre_pc, activo FROM equipos")
-        for row_idx, row in enumerate(cursor.fetchall()):
+        equipos = base_datos.obtener_todas_pcs()
+        for row_idx, row in enumerate(equipos):
             self.table_pcs.insertRow(row_idx)
             item_nombre = QTableWidgetItem(row[1])
             item_nombre.setData(Qt.ItemDataRole.UserRole, row[0])
@@ -274,16 +176,11 @@ class SistemaBiblioteca(QMainWindow):
             
             self.table_pcs.setItem(row_idx, 0, item_nombre)
             self.table_pcs.setItem(row_idx, 1, item_estado)
-        conn.close()
 
     def buscar_usuario_formulario(self):
         ident = self.txt_form_buscar.text().strip()
         if not ident: return
-        conn = sqlite3.connect(DB_NAME)
-        cursor = conn.cursor()
-        cursor.execute("SELECT id, nombre_completo, tipo_usuario, carrera FROM usuarios WHERE cedula = ? OR matricula = ?", (ident, ident))
-        res = cursor.fetchone()
-        conn.close()
+        res = base_datos.buscar_usuario(ident)
         
         if res:
             self.usuario_actual_prestamo = res[0]
@@ -296,18 +193,13 @@ class SistemaBiblioteca(QMainWindow):
     def agregar_nueva_pc(self):
         nombre = self.txt_nueva_pc.text().strip()
         if not nombre: return
-        conn = sqlite3.connect(DB_NAME)
-        cursor = conn.cursor()
         try:
-            cursor.execute("INSERT INTO equipos (nombre_pc, activo) VALUES (?, 1)", (nombre,))
-            conn.commit()
+            base_datos.agregar_equipo(nombre)
             self.txt_nueva_pc.clear()
             self.actualizar_tabla_pcs()
             self.actualizar_combo_pcs()
         except sqlite3.IntegrityError:
             QMessageBox.critical(self, "Error", "Ese nombre de PC ya existe.")
-        finally:
-            conn.close()
 
     def alternar_estado_pc(self):
         fila_sel = self.table_pcs.currentRow()
@@ -316,11 +208,7 @@ class SistemaBiblioteca(QMainWindow):
         estado_actual = self.table_pcs.item(fila_sel, 1).text()
         nuevo_estado = 0 if estado_actual == "Activo" else 1
         
-        conn = sqlite3.connect(DB_NAME)
-        cursor = conn.cursor()
-        cursor.execute("UPDATE equipos SET activo = ? WHERE id = ?", (nuevo_estado, id_pc))
-        conn.commit()
-        conn.close()
+        base_datos.actualizar_estado_equipo(id_pc, nuevo_estado)
         self.actualizar_tabla_pcs()
         self.actualizar_combo_pcs()
 
@@ -329,20 +217,12 @@ class SistemaBiblioteca(QMainWindow):
         id_pc = self.cmb_form_pcs.currentData()
         if not id_pc: return
             
-        conn = sqlite3.connect(DB_NAME)
-        cursor = conn.cursor()
-        cursor.execute("INSERT INTO prestamos_pc (usuario_id, equipo_id) VALUES (?, ?)", (self.usuario_actual_prestamo, id_pc))
-        conn.commit()
-        conn.close()
-        
+        base_datos.guardar_asignacion(self.usuario_actual_prestamo, id_pc)
         QMessageBox.information(self, "Éxito", "Asignación guardada correctamente.")
         self.txt_form_buscar.clear()
         self.lbl_form_datos.setText("Usuario: No seleccionado\nTipo: -\nCarrera: -")
         self.usuario_actual_prestamo = None
 
-    # -----------------------------------------------------------------
-    # VISTA 2: KIOSCO TÁCTIL
-    # -----------------------------------------------------------------
     def crear_vista_kiosco_acceso(self):
         self.layout_kiosco_master = QVBoxLayout(self.vista_kiosco_acceso)
         self.layout_kiosco_master.setContentsMargins(40, 40, 40, 40)
@@ -524,18 +404,13 @@ class SistemaBiblioteca(QMainWindow):
     def procesar_ingreso_salon(self):
         ident = self.txt_ingreso_id.text().strip()
         if not ident: return
-        conn = sqlite3.connect(DB_NAME)
-        cursor = conn.cursor()
-        cursor.execute("SELECT id, nombre_completo FROM usuarios WHERE cedula = ? OR matricula = ?", (ident, ident))
-        res = cursor.fetchone()
+        res = base_datos.buscar_usuario(ident)
         if res:
-            cursor.execute("INSERT INTO accesos_salon (usuario_id) VALUES (?)", (res[0],))
-            conn.commit()
+            base_datos.registrar_acceso(res[0])
             QMessageBox.information(self, "Adelante", f"Bienvenido/a {res[1]}")
             self.limpiar_volver_kiosco()
         else:
             QMessageBox.warning(self, "Error", "ID no registrada. Vaya a Nuevo Usuario.")
-        conn.close()
 
     def procesar_registro_usuario(self):
         cedula = self.txt_reg_cedula.text().strip()
@@ -552,26 +427,13 @@ class SistemaBiblioteca(QMainWindow):
             QMessageBox.warning(self, "Aviso", "Indique su Matrícula y Carrera (Obligatorio para Estudiantes).")
             return
             
-        conn = sqlite3.connect(DB_NAME)
-        cursor = conn.cursor()
         try:
-            cursor.execute(
-                "INSERT INTO usuarios (cedula, matricula, nombre_completo, tipo_usuario, carrera) VALUES (?, ?, ?, ?, ?)",
-                (cedula, matricula if matricula else None, nombre, tipo, carrera if tipo == "Estudiante" else None)
-            )
-            nuevo_id = cursor.lastrowid
-            cursor.execute("INSERT INTO accesos_salon (usuario_id) VALUES (?)", (nuevo_id,))
-            conn.commit()
+            base_datos.registrar_nuevo_usuario(cedula, matricula, nombre, tipo, carrera)
             QMessageBox.information(self, "Éxito", f"¡Registro completado {nombre}!")
             self.limpiar_volver_kiosco()
         except sqlite3.IntegrityError:
             QMessageBox.critical(self, "Error", "Esa Cédula o Matrícula ya existe en el sistema.")
-        finally:
-            conn.close()
 
-    # -----------------------------------------------------------------
-    # VISTA 3: MÉTRICAS Y EXCEL
-    # -----------------------------------------------------------------
     def crear_vista_metricas(self):
         layout_global = QVBoxLayout(self.vista_metricas)
         layout_global.addLayout(self.barra_navegacion(2))
@@ -608,38 +470,12 @@ class SistemaBiblioteca(QMainWindow):
             
         return ini.strftime("%Y-%m-%d 00:00:00"), fin
 
-    # =============== CORRECCIÓN PRINCIPAL APLICADA AQUÍ ===============
     def exportar_metricas_excel(self):
         try:
             f_inicio, f_fin = self.calcular_fechas()
-            conn = sqlite3.connect(DB_NAME)
-            cursor = conn.cursor()
             
-            cursor.execute("SELECT nombre_pc FROM equipos ORDER BY id ASC")
-            lista_pcs = [row[0] for row in cursor.fetchall()]
-            
-            frag_sql = [f"SUM(CASE WHEN e.nombre_pc = '{pc}' THEN 1 ELSE 0 END) AS [{pc}]" for pc in lista_pcs]
-            cols_pcs = ", " + ", ".join(frag_sql) if frag_sql else ""
-            
-            query = f"""
-            SELECT 
-                u.nombre_completo AS [Nombre],
-                u.cedula AS [Cédula],
-                COALESCE(u.matricula, 'N/A') AS [Matrícula],
-                u.tipo_usuario AS [Tipo],
-                COALESCE(u.carrera, 'N/A') AS [Carrera],
-                (SELECT COUNT(*) FROM accesos_salon a WHERE a.usuario_id = u.id AND datetime(a.fecha_hora) BETWEEN datetime(?) AND datetime(?)) AS [Veces Salón]
-                {cols_pcs}
-            FROM usuarios u
-            LEFT JOIN prestamos_pc p ON u.id = p.usuario_id AND date(p.fecha_prestamo) BETWEEN date(?) AND date(?)
-            LEFT JOIN equipos e ON p.equipo_id = e.id
-            GROUP BY u.id
-            ORDER BY u.nombre_completo ASC;
-            """
-            
-            cursor.execute(query, (f_inicio, f_fin, f_inicio, f_fin))
-            headers = [desc[0] for desc in cursor.description]
-            datos = cursor.fetchall()
+            # Reemplazamos toda la conexión cruda pidiendo los datos limpios a base_datos
+            headers, datos = base_datos.obtener_datos_metricas(f_inicio, f_fin)
             
             wb = Workbook()
             ws = wb.active
@@ -662,57 +498,13 @@ class SistemaBiblioteca(QMainWindow):
                 ws.column_dimensions[col[0].column_letter].width = max(l_max + 2, 10)
                 
             nombre = f"Reporte_Biblioteca_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
-            
-            # Intento guardar el archivo, aquí es donde suele ocurrir el PermissionError
             wb.save(nombre)
             
-            # Mensaje de éxito si todo salió bien
             QMessageBox.information(self, "Excel Generado", f"El archivo se guardó correctamente como:\n{nombre}")
 
         except PermissionError:
             QMessageBox.critical(self, "Archivo Abierto", "No se pudo generar el Excel.\nParece que tienes un reporte anterior abierto. Cierra Excel e inténtalo de nuevo.")
-        
         except Exception as error_general:
-            # En caso de que sea otro error, lo mostramos en pantalla sin cerrar el programa
             mensaje_error = traceback.format_exc()
-            print(mensaje_error) # Se imprime en la consola de VS Code
+            print(mensaje_error)
             QMessageBox.critical(self, "Error Crítico", f"Ocurrió un error al generar el Excel:\n\n{str(error_general)}\n\nRevisa la terminal para más detalles.")
-        
-        finally:
-            # Asegurarse de cerrar la base de datos sin importar si hubo error o no
-            if 'conn' in locals():
-                conn.close()
-
-# =====================================================================
-# INICIAR APLICACIÓN (CORREGIDO Y COMPLETADO)
-# =====================================================================
-if __name__ == "__main__":
-    inicializar_bd()
-    app = QApplication(sys.argv)
-    
-    paleta_clara = QPalette()
-    paleta_clara.setColor(QPalette.ColorRole.Window, QColor("#F8FAFC"))
-    paleta_clara.setColor(QPalette.ColorRole.WindowText, QColor("#1E293B"))
-    paleta_clara.setColor(QPalette.ColorRole.Base, QColor("#FFFFFF"))
-    paleta_clara.setColor(QPalette.ColorRole.AlternateBase, QColor("#F1F5F9"))
-    paleta_clara.setColor(QPalette.ColorRole.Text, QColor("#1E293B"))
-    paleta_clara.setColor(QPalette.ColorRole.Button, QColor("#E2E8F0"))
-    paleta_clara.setColor(QPalette.ColorRole.ButtonText, QColor("#1E293B"))
-    paleta_clara.setColor(QPalette.ColorRole.Highlight, QColor("#0EA5E9"))
-    paleta_clara.setColor(QPalette.ColorRole.HighlightedText, QColor("#FFFFFF"))
-    app.setPalette(paleta_clara)
-    
-    app.setStyleSheet("""
-        QMainWindow, QDialog, QMessageBox { background-color: #F8FAFC; }
-        QLabel { font-family: 'Segoe UI'; color: #1E293B; }
-        QLineEdit { font-family: 'Segoe UI'; color: #1E293B; background-color: white; border: 1px solid #CBD5E1; border-radius: 6px; padding: 5px; }
-        QTableWidget { background-color: white; color: #1E293B; gridline-color: #E2E8F0; border: 1px solid #CBD5E1; font-size: 14px; }
-        QHeaderView::section { background-color: #F1F5F9; color: #1E293B; font-weight: bold; border: 1px solid #E2E8F0; font-size: 14px; padding: 5px; }
-        QComboBox { background-color: white; color: #1E293B; border: 1px solid #CBD5E1; border-radius: 6px; padding: 5px; min-height: 30px; }
-        QComboBox QAbstractItemView { background-color: white; color: #1E293B; selection-background-color: #0EA5E9; selection-color: white; }
-        QPushButton { font-family: 'Segoe UI'; font-size: 14px; border-radius: 6px; padding: 8px; }
-    """)
-    
-    ventana = SistemaBiblioteca()
-    ventana.show()
-    sys.exit(app.exec())
