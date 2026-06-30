@@ -1,7 +1,7 @@
 import psycopg2
 
 # Pega aquí el Connection String que te dio Neon o Supabase
-DB_URL = "postgresql://usuario:password@tu-host.neon.tech/nombre_bd?sslmode=require"
+DB_URL = "postgresql://neondb_owner:npg_4owufargSh5c@ep-sparkling-cloud-ate9kxrl.c-9.us-east-1.aws.neon.tech/neondb?sslmode=require"
 
 def obtener_conexion():
     return psycopg2.connect(DB_URL)
