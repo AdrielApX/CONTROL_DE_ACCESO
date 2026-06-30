@@ -1,9 +1,9 @@
 import traceback
-import sqlite3
+import psycopg2
 from datetime import datetime, timedelta
 
 from PyQt6.QtWidgets import (
-    QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, 
+    QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, 
     QLabel, QLineEdit, QPushButton, QComboBox, QTableWidget, 
     QTableWidgetItem, QStackedWidget, QFormLayout, QHeaderView, 
     QMessageBox, QDialog, QGridLayout, QFrame
@@ -14,7 +14,6 @@ from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill
 
 import base_datos
-from componentes_tactiles import LineEditTactil
 
 # =====================================================================
 # 3. INTERFAZ PRINCIPAL
@@ -82,7 +81,6 @@ class SistemaBiblioteca(QMainWindow):
     def crear_vista_formulario_principal(self):
         layout_global = QVBoxLayout(self.vista_formulario_principal)
         layout_global.addLayout(self.barra_navegacion(0))
-        
         layout_contenido = QHBoxLayout()
         
         sec_formulario = QVBoxLayout()
@@ -170,10 +168,8 @@ class SistemaBiblioteca(QMainWindow):
             item_nombre = QTableWidgetItem(row[1])
             item_nombre.setData(Qt.ItemDataRole.UserRole, row[0])
             item_estado = QTableWidgetItem("Activo" if row[2] == 1 else "Inactivo")
-            
             item_nombre.setForeground(Qt.GlobalColor.black)
             item_estado.setForeground(Qt.GlobalColor.black)
-            
             self.table_pcs.setItem(row_idx, 0, item_nombre)
             self.table_pcs.setItem(row_idx, 1, item_estado)
 
@@ -181,7 +177,6 @@ class SistemaBiblioteca(QMainWindow):
         ident = self.txt_form_buscar.text().strip()
         if not ident: return
         res = base_datos.buscar_usuario(ident)
-        
         if res:
             self.usuario_actual_prestamo = res[0]
             self.lbl_form_datos.setText(f"Usuario: {res[1]}\nTipo: {res[2]}\nCarrera: {res[3] if res[3] else 'N/A'}")
@@ -198,7 +193,7 @@ class SistemaBiblioteca(QMainWindow):
             self.txt_nueva_pc.clear()
             self.actualizar_tabla_pcs()
             self.actualizar_combo_pcs()
-        except sqlite3.IntegrityError:
+        except psycopg2.IntegrityError:
             QMessageBox.critical(self, "Error", "Ese nombre de PC ya existe.")
 
     def alternar_estado_pc(self):
@@ -207,7 +202,6 @@ class SistemaBiblioteca(QMainWindow):
         id_pc = self.table_pcs.item(fila_sel, 0).data(Qt.ItemDataRole.UserRole)
         estado_actual = self.table_pcs.item(fila_sel, 1).text()
         nuevo_estado = 0 if estado_actual == "Activo" else 1
-        
         base_datos.actualizar_estado_equipo(id_pc, nuevo_estado)
         self.actualizar_tabla_pcs()
         self.actualizar_combo_pcs()
@@ -216,7 +210,6 @@ class SistemaBiblioteca(QMainWindow):
         if not self.usuario_actual_prestamo: return
         id_pc = self.cmb_form_pcs.currentData()
         if not id_pc: return
-            
         base_datos.guardar_asignacion(self.usuario_actual_prestamo, id_pc)
         QMessageBox.information(self, "Éxito", "Asignación guardada correctamente.")
         self.txt_form_buscar.clear()
@@ -224,19 +217,17 @@ class SistemaBiblioteca(QMainWindow):
         self.usuario_actual_prestamo = None
 
     # -----------------------------------------------------------------
-    # VISTA 2: KIOSCO TÁCTIL (MODIFICADO A VENTANA COMPARTIDA)
+    # VISTA 2: KIOSCO TÁCTIL
     # -----------------------------------------------------------------
     def crear_vista_kiosco_acceso(self):
         layout_global = QVBoxLayout(self.vista_kiosco_acceso)
         
-        # AGREGAMOS LA BARRA DE NAVEGACIÓN DENTRO DE UN WIDGET PARA PODER OCULTARLA
         self.nav_widget_kiosco = QWidget()
         self.nav_widget_kiosco.setLayout(self.barra_navegacion(1))
         layout_global.addWidget(self.nav_widget_kiosco)
         
-        # CONTENEDOR INTERNO DEL KIOSCO
         layout_kiosco_master = QVBoxLayout()
-        layout_kiosco_master.setContentsMargins(40, 40, 40, 40)
+        layout_kiosco_master.setContentsMargins(20, 20, 20, 20)
         self.kiosco_stack = QStackedWidget()
         layout_kiosco_master.addWidget(self.kiosco_stack)
         
@@ -244,7 +235,6 @@ class SistemaBiblioteca(QMainWindow):
         self.p_kiosco_inicio = QWidget()
         lay_ini = QVBoxLayout(self.p_kiosco_inicio)
         lay_ini.setSpacing(30)
-        
         lbl_k_tit = QLabel("SISTEMA DE ACCESO - BIBLIOTECA")
         lbl_k_tit.setAlignment(Qt.AlignmentFlag.AlignCenter)
         lbl_k_tit.setStyleSheet("font-size: 32px; font-weight: bold; color: #0F172A; margin-bottom: 20px;")
@@ -258,7 +248,6 @@ class SistemaBiblioteca(QMainWindow):
         btn_k_registrar.setStyleSheet("background-color: #0F172A; color: white; font-size: 24px; font-weight: bold; border-radius: 15px; min-height: 140px;")
         btn_k_registrar.clicked.connect(lambda: self.kiosco_stack.setCurrentIndex(2))
         
-        # BOTÓN ALTERNADOR (Reemplaza al antiguo "Salir")
         self.btn_k_fullscreen = QPushButton("🖵 BLOQUEAR EN PANTALLA COMPLETA")
         self.btn_k_fullscreen.setStyleSheet("background-color: #1E293B; color: white; font-size: 16px; font-weight: bold; border-radius: 8px; padding: 15px;")
         self.btn_k_fullscreen.clicked.connect(self.alternar_pantalla_completa)
@@ -299,9 +288,10 @@ class SistemaBiblioteca(QMainWindow):
         row, col = 0, 0
         for boton in botones_pad:
             btn_pad = QPushButton(boton)
+            btn_pad.setFocusPolicy(Qt.FocusPolicy.NoFocus) # EVITA QUE ROBE EL FOCO
             btn_pad.setMinimumSize(85, 85)
             btn_pad.setStyleSheet("background-color: white; color: #1E293B; border: 2px solid #CBD5E1; font-size: 22px; font-weight: bold; border-radius: 10px;")
-            btn_pad.clicked.connect(self.tecla_pad_presionada)
+            btn_pad.clicked.connect(self.tecla_num_presionada)
             grid_keypad.addWidget(btn_pad, row, col)
             col += 1
             if col > 2:
@@ -312,69 +302,124 @@ class SistemaBiblioteca(QMainWindow):
         lay_ing.addLayout(grid_keypad, 3)
         self.kiosco_stack.addWidget(self.p_kiosco_ingreso)
         
-        # 2.3 REGISTRO TÁCTIL
+        # 2.3 REGISTRO TÁCTIL (DIVIDIDO EN DOS COLUMNAS)
         self.p_kiosco_registro = QWidget()
-        lay_reg = QVBoxLayout(self.p_kiosco_registro)
+        lay_reg_maestro = QHBoxLayout(self.p_kiosco_registro)
         
+        col_form = QVBoxLayout()
         lay_header_reg = QHBoxLayout()
         lbl_reg_tit = QLabel("Formulario de Registro")
-        lbl_reg_tit.setStyleSheet("font-size: 24px; font-weight: bold; color: #0F172A;")
-        
-        lbl_branding = self.cargar_imagen_branding(size=70)
+        lbl_reg_tit.setStyleSheet("font-size: 22px; font-weight: bold; color: #0F172A;")
+        lbl_branding = self.cargar_imagen_branding(size=50)
         lay_header_reg.addWidget(lbl_reg_tit)
         lay_header_reg.addStretch()
         lay_header_reg.addWidget(lbl_branding)
-        lay_reg.addLayout(lay_header_reg)
+        col_form.addLayout(lay_header_reg)
         
         form_reg = QFormLayout()
-        form_reg.setSpacing(15)
+        form_reg.setSpacing(10)
         
-        self.txt_reg_cedula = LineEditTactil()
-        self.txt_reg_matricula = LineEditTactil()
-        self.txt_reg_nombre = LineEditTactil()
+        estilo_input = "font-size: 16px; min-height: 40px; border: 2px solid #CBD5E1; border-radius: 6px; padding: 5px; background-color: white; color: #1E293B;"
+        
+        self.txt_reg_cedula = QLineEdit()
+        self.txt_reg_cedula.setStyleSheet(estilo_input)
+        self.txt_reg_matricula = QLineEdit()
+        self.txt_reg_matricula.setStyleSheet(estilo_input)
+        self.txt_reg_nombre = QLineEdit()
+        self.txt_reg_nombre.setStyleSheet(estilo_input)
         
         self.cmb_reg_tipo = QComboBox()
         self.cmb_reg_tipo.addItems(["Estudiante", "Profesor", "Empleado", "Invitado"])
-        self.cmb_reg_tipo.setStyleSheet("background-color: white; color: #1E293B; font-size: 18px; min-height: 50px; border: 1px solid #CBD5E1;")
+        self.cmb_reg_tipo.setStyleSheet("background-color: white; color: #1E293B; font-size: 16px; min-height: 40px; border: 1px solid #CBD5E1;")
         self.cmb_reg_tipo.currentTextChanged.connect(self.evaluar_obligatoriedad_estudiante)
         
-        self.txt_reg_carrera = LineEditTactil()
+        self.cmb_reg_carrera = QComboBox()
+        carreras_utesa = [
+            "Ninguna / No Aplica",
+            "Arquitectura",
+            "Ingeniería Civil",
+            "Ingeniería Electrónica",
+            "Ingeniería en Sistemas Computacionales",
+            "Ingeniería Industrial",
+            "Medicina",
+            "Odontología",
+            "Enfermería",
+            "Derecho",
+            "Administración de Empresas",
+            "Administración de Empresas Turísticas",
+            "Contaduría Pública",
+            "Mercadeo",
+            "Psicología",
+            "Comunicación Social",
+            "Educación"
+        ]
+        self.cmb_reg_carrera.addItems(carreras_utesa)
+        self.cmb_reg_carrera.setStyleSheet("background-color: white; color: #1E293B; font-size: 14px; min-height: 40px; border: 1px solid #CBD5E1;")
+        
         self.lbl_alerta_estudiante = QLabel("* Matrícula y Carrera obligatorias para Estudiantes")
-        self.lbl_alerta_estudiante.setStyleSheet("color: #EF4444; font-weight: bold; font-size: 13px;")
+        self.lbl_alerta_estudiante.setStyleSheet("color: #EF4444; font-weight: bold; font-size: 12px;")
         
         form_reg.addRow(QLabel("Cédula:"), self.txt_reg_cedula)
         form_reg.addRow(QLabel("Matrícula:"), self.txt_reg_matricula)
         form_reg.addRow(QLabel("Nombre Completo:"), self.txt_reg_nombre)
         form_reg.addRow(QLabel("Tipo de Usuario:"), self.cmb_reg_tipo)
-        form_reg.addRow(QLabel("Carrera:"), self.txt_reg_carrera)
+        form_reg.addRow(QLabel("Carrera:"), self.cmb_reg_carrera)
         form_reg.addRow("", self.lbl_alerta_estudiante)
-        lay_reg.addLayout(form_reg)
+        col_form.addLayout(form_reg)
         
-        btn_reg_guardar = QPushButton("GUARDAR REGISTRO E INGRESAR")
-        btn_reg_guardar.setStyleSheet("background-color: #10B981; color: white; font-size: 20px; font-weight: bold; min-height: 60px; border-radius: 8px;")
+        btn_reg_guardar = QPushButton("GUARDAR E INGRESAR")
+        btn_reg_guardar.setStyleSheet("background-color: #10B981; color: white; font-size: 18px; font-weight: bold; min-height: 50px; border-radius: 8px;")
         btn_reg_guardar.clicked.connect(self.procesar_registro_usuario)
         
         btn_reg_volver = QPushButton("Volver Atrás")
-        btn_reg_volver.setStyleSheet("background-color: #64748B; color: white; font-size: 16px; min-height: 45px;")
+        btn_reg_volver.setStyleSheet("background-color: #64748B; color: white; font-size: 14px; min-height: 40px;")
         btn_reg_volver.clicked.connect(self.limpiar_volver_kiosco)
         
-        lay_reg.addWidget(btn_reg_guardar)
-        lay_reg.addStretch()
-        lay_reg.addWidget(btn_reg_volver)
-        self.kiosco_stack.addWidget(self.p_kiosco_registro)
+        col_form.addWidget(btn_reg_guardar)
+        col_form.addStretch()
+        col_form.addWidget(btn_reg_volver)
         
-        # Agregamos el contenido al layout global
+        col_teclado = QVBoxLayout()
+        grid_qwerty = QGridLayout()
+        grid_qwerty.setSpacing(5)
+        
+        filas_teclado = [
+            ['1','2','3','4','5','6','7','8','9','0'],
+            ['Q','W','E','R','T','Y','U','I','O','P'],
+            ['A','S','D','F','G','H','J','K','L','Ñ'],
+            ['Z','X','C','V','B','N','M','-','_','.'],
+            ['Espacio', 'Borrar', 'Limpiar']
+        ]
+        
+        for r_idx, fila in enumerate(filas_teclado):
+            for c_idx, tecla in enumerate(fila):
+                btn_tecla = QPushButton(tecla)
+                btn_tecla.setFocusPolicy(Qt.FocusPolicy.NoFocus) # EVITA QUE ROBE EL FOCO AL QLINEEDIT
+                btn_tecla.setMinimumHeight(55)
+                btn_tecla.setStyleSheet("background-color: white; color: #1E293B; border: 1px solid #CBD5E1; font-size: 18px; font-weight: bold; border-radius: 6px;")
+                if tecla == 'Espacio':
+                    grid_qwerty.addWidget(btn_tecla, r_idx, c_idx, 1, 4) 
+                elif tecla in ['Borrar', 'Limpiar']:
+                    grid_qwerty.addWidget(btn_tecla, r_idx, c_idx + 3, 1, 3) 
+                else:
+                    grid_qwerty.addWidget(btn_tecla, r_idx, c_idx)
+                
+                btn_tecla.clicked.connect(self.tecla_alfa_presionada)
+        
+        col_teclado.addLayout(grid_qwerty)
+        
+        lay_reg_maestro.addLayout(col_form, 4)
+        lay_reg_maestro.addLayout(col_teclado, 6)
+        
+        self.kiosco_stack.addWidget(self.p_kiosco_registro)
         layout_global.addLayout(layout_kiosco_master)
 
     def activar_modo_kiosco(self):
-        # AHORA INICIA DE FORMA NORMAL (VENTANA), SIN FORZAR PANTALLA COMPLETA
         self.stacked_widget.setCurrentIndex(1)
         self.kiosco_stack.setCurrentIndex(0)
 
-    # ESTA FUNCIÓN SE ENCARGA DEL SECUESTRO DE PANTALLA (NUEVA LÓGICA)
     def alternar_pantalla_completa(self):
         if self.isFullScreen():
-            # PEDIR CLAVE PARA SALIR DEL SECUESTRO
             dialogo = QDialog(self)
             dialogo.setWindowTitle("Seguridad")
             lay_d = QVBoxLayout(dialogo)
@@ -389,26 +434,42 @@ class SistemaBiblioteca(QMainWindow):
             
             if dialogo.exec() == QDialog.DialogCode.Accepted:
                 if txt_pass.text() == "1234":
-                    self.showMaximized() # O self.showNormal() dependiendo de tu gusto
-                    self.nav_widget_kiosco.show() # Mostramos la barra superior
+                    self.showMaximized()
+                    self.nav_widget_kiosco.show()
                     self.btn_k_fullscreen.setText("🖵 BLOQUEAR EN PANTALLA COMPLETA")
                     self.btn_k_fullscreen.setStyleSheet("background-color: #1E293B; color: white; font-size: 16px; font-weight: bold; border-radius: 8px; padding: 15px;")
                 else:
                     QMessageBox.critical(self, "Error", "Clave incorrecta")
         else:
-            # SECUESTRAR SIN PEDIR CLAVE
             self.showFullScreen()
-            self.nav_widget_kiosco.hide() # Ocultamos la barra para que no escapen
+            self.nav_widget_kiosco.hide()
             self.btn_k_fullscreen.setText("🔓 DESBLOQUEAR Y SALIR DE PANTALLA COMPLETA")
             self.btn_k_fullscreen.setStyleSheet("background-color: #EF4444; color: white; font-size: 16px; font-weight: bold; border-radius: 8px; padding: 15px;")
 
-    def tecla_pad_presionada(self):
+    def tecla_num_presionada(self):
         btn = self.sender()
         texto_tecla = btn.text()
         texto_actual = self.txt_ingreso_id.text()
         if texto_tecla == "Limpiar": self.txt_ingreso_id.clear()
         elif texto_tecla == "Borrar": self.txt_ingreso_id.setText(texto_actual[:-1])
         else: self.txt_ingreso_id.setText(texto_actual + texto_tecla)
+
+    def tecla_alfa_presionada(self):
+        btn = self.sender()
+        tecla = btn.text()
+        
+        widget_activo = QApplication.focusWidget()
+        
+        if isinstance(widget_activo, QLineEdit):
+            texto_actual = widget_activo.text()
+            if tecla == "Limpiar":
+                widget_activo.clear()
+            elif tecla == "Borrar":
+                widget_activo.setText(texto_actual[:-1])
+            elif tecla == "Espacio":
+                widget_activo.setText(texto_actual + " ")
+            else:
+                widget_activo.setText(texto_actual + tecla)
 
     def evaluar_obligatoriedad_estudiante(self, tipo):
         if tipo == "Estudiante":
@@ -423,8 +484,8 @@ class SistemaBiblioteca(QMainWindow):
         self.txt_reg_cedula.clear()
         self.txt_reg_matricula.clear()
         self.txt_reg_nombre.clear()
-        self.txt_reg_carrera.clear()
         self.cmb_reg_tipo.setCurrentIndex(0)
+        self.cmb_reg_carrera.setCurrentIndex(0)
         self.kiosco_stack.setCurrentIndex(0)
 
     def procesar_ingreso_salon(self):
@@ -443,7 +504,10 @@ class SistemaBiblioteca(QMainWindow):
         matricula = self.txt_reg_matricula.text().strip()
         nombre = self.txt_reg_nombre.text().strip()
         tipo = self.cmb_reg_tipo.currentText()
-        carrera = self.txt_reg_carrera.text().strip()
+        
+        carrera = self.cmb_reg_carrera.currentText()
+        if carrera == "Seleccione una carrera... (Opcional)" or carrera == "Ninguna / No Aplica":
+            carrera = ""
         
         if not cedula or not nombre: 
             QMessageBox.warning(self, "Aviso", "La Cédula y el Nombre son campos obligatorios.")
@@ -457,7 +521,7 @@ class SistemaBiblioteca(QMainWindow):
             base_datos.registrar_nuevo_usuario(cedula, matricula, nombre, tipo, carrera)
             QMessageBox.information(self, "Éxito", f"¡Registro completado {nombre}!")
             self.limpiar_volver_kiosco()
-        except sqlite3.IntegrityError:
+        except psycopg2.IntegrityError:
             QMessageBox.critical(self, "Error", "Esa Cédula o Matrícula ya existe en el sistema.")
 
     # -----------------------------------------------------------------

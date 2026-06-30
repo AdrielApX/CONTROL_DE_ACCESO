@@ -1,19 +1,15 @@
 import psycopg2
 
-# Pega aquí el Connection String que te dio Neon o Supabase
+# Tu conexión real al servidor de Neon.tech
 DB_URL = "postgresql://neondb_owner:npg_4owufargSh5c@ep-sparkling-cloud-ate9kxrl.c-9.us-east-1.aws.neon.tech/neondb?sslmode=require"
 
 def obtener_conexion():
     return psycopg2.connect(DB_URL)
 
-# =====================================================================
-# 1. BASE DE DATOS E INICIALIZACIÓN (CREACIÓN DE TABLAS)
-# =====================================================================
 def inicializar_bd():
     conn = obtener_conexion()
     cursor = conn.cursor()
     
-    # En PostgreSQL, usamos SERIAL en lugar de AUTOINCREMENT
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS usuarios (
         id SERIAL PRIMARY KEY,
@@ -33,7 +29,6 @@ def inicializar_bd():
     );
     """)
     
-    # CURRENT_TIMESTAMP y CURRENT_DATE sustituyen a las funciones de fecha de SQLite
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS accesos_salon (
         id SERIAL PRIMARY KEY,
@@ -54,13 +49,10 @@ def inicializar_bd():
     cursor.execute("SELECT COUNT(*) FROM equipos")
     if cursor.fetchone()[0] == 0:
         for i in range(1, 5):
-            # OJO: En PostgreSQL usamos %s en lugar de ?
             cursor.execute("INSERT INTO equipos (nombre_pc, activo) VALUES (%s, 1)", (f"PC {i}",))
             
     conn.commit()
     conn.close()
-
-# ---- FUNCIONES QUE ALIMENTAN A LA INTERFAZ ----
 
 def obtener_pcs_activas():
     conn = obtener_conexion()
@@ -103,22 +95,28 @@ def actualizar_estado_equipo(id_pc, nuevo_estado):
 def guardar_asignacion(usuario_id, id_pc):
     conn = obtener_conexion()
     cursor = conn.cursor()
-    cursor.execute("INSERT INTO prestamos_pc (usuario_id, equipo_id) VALUES (%s, %s)", (usuario_id, id_pc))
+    # Forzamos la zona horaria de RD para la fecha
+    cursor.execute("""
+        INSERT INTO prestamos_pc (usuario_id, equipo_id, fecha_prestamo) 
+        VALUES (%s, %s, (CURRENT_TIMESTAMP AT TIME ZONE 'America/Santo_Domingo')::date)
+    """, (usuario_id, id_pc))
     conn.commit()
     conn.close()
 
 def registrar_acceso(usuario_id):
     conn = obtener_conexion()
     cursor = conn.cursor()
-    cursor.execute("INSERT INTO accesos_salon (usuario_id) VALUES (%s)", (usuario_id,))
+    # Forzamos la zona horaria de RD para la fecha y hora
+    cursor.execute("""
+        INSERT INTO accesos_salon (usuario_id, fecha_hora) 
+        VALUES (%s, CURRENT_TIMESTAMP AT TIME ZONE 'America/Santo_Domingo')
+    """, (usuario_id,))
     conn.commit()
     conn.close()
 
 def registrar_nuevo_usuario(cedula, matricula, nombre, tipo, carrera):
     conn = obtener_conexion()
     cursor = conn.cursor()
-    
-    # En PostgreSQL, RETURNING id se usa para obtener el ID recién insertado
     cursor.execute(
         """INSERT INTO usuarios (cedula, matricula, nombre_completo, tipo_usuario, carrera) 
            VALUES (%s, %s, %s, %s, %s) RETURNING id""",
@@ -126,7 +124,11 @@ def registrar_nuevo_usuario(cedula, matricula, nombre, tipo, carrera):
     )
     nuevo_id = cursor.fetchone()[0]
     
-    cursor.execute("INSERT INTO accesos_salon (usuario_id) VALUES (%s)", (nuevo_id,))
+    # Forzamos la zona horaria de RD al crear el primer acceso
+    cursor.execute("""
+        INSERT INTO accesos_salon (usuario_id, fecha_hora) 
+        VALUES (%s, CURRENT_TIMESTAMP AT TIME ZONE 'America/Santo_Domingo')
+    """, (nuevo_id,))
     conn.commit()
     conn.close()
 
@@ -146,9 +148,12 @@ def obtener_datos_metricas(f_inicio, f_fin):
         COALESCE(u.matricula, 'N/A') AS "Matrícula",
         u.tipo_usuario AS "Tipo",
         COALESCE(u.carrera, 'N/A') AS "Carrera",
-        (SELECT COUNT(*) FROM accesos_salon a WHERE a.usuario_id = u.id AND a.fecha_hora BETWEEN %s::timestamp AND %s::timestamp) AS "Veces Salón"
+        TO_CHAR(MAX(a.fecha_hora), 'YYYY-MM-DD') AS "Última Fecha",
+        TO_CHAR(MAX(a.fecha_hora), 'HH12:MI:SS AM') AS "Última Hora",
+        COUNT(a.id) AS "Veces Salón"
         {cols_pcs}
     FROM usuarios u
+    LEFT JOIN accesos_salon a ON u.id = a.usuario_id AND a.fecha_hora BETWEEN %s::timestamp AND %s::timestamp
     LEFT JOIN prestamos_pc p ON u.id = p.usuario_id AND p.fecha_prestamo BETWEEN %s::date AND %s::date
     LEFT JOIN equipos e ON p.equipo_id = e.id
     GROUP BY u.id
