@@ -2,7 +2,7 @@
 
 
 a = Analysis(
-    ['C:\\Users\\adrie\\Documents\\biblioteca_utesa\\venv\\app.py'],
+    ['app.py'],
     pathex=[],
     binaries=[],
     datas=[],
