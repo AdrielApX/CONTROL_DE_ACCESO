@@ -366,7 +366,7 @@ class SistemaBiblioteca(QMainWindow):
             "Ninguna / No Aplica", "Arquitectura", "Ingeniería Civil", "Ingeniería Electrónica",
             "Ingeniería en Sistemas Computacionales", "Ingeniería Industrial", "Medicina",
             "Odontología", "Enfermería", "Derecho", "Administración de Empresas",
-            "Administración de Empresas Turísticas", "Contaduría Pública", "Mercadeo",
+            "Administración de Empresas Turísticas", "Contabilidad", "Mercadeo",
             "Psicología", "Comunicación Social", "Educación"
         ]
         self.cmb_reg_carrera.addItems(carreras_utesa)
