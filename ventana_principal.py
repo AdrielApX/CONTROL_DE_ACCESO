@@ -367,7 +367,7 @@ class SistemaBiblioteca(QMainWindow):
             "Ingeniería en Sistemas Computacionales", "Ingeniería Industrial", "Medicina",
             "Odontología", "Enfermería", "Derecho", "Administración de Empresas",
             "Administración de Empresas Turísticas", "Contabilidad", "Mercadeo",
-            "Psicología", "Comunicación Social", "Educación"
+            "Psicología", "Comunicación Social", "Educación", "Lenguas Extranjeras/Modernas", "Nutricion Humana y Dietetica"
         ]
         self.cmb_reg_carrera.addItems(carreras_utesa)
         self.cmb_reg_carrera.setStyleSheet("background-color: white; color: #1E293B; font-size: 14px; min-height: 40px; border: 1px solid #CBD5E1;")
