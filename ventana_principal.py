@@ -363,11 +363,29 @@ class SistemaBiblioteca(QMainWindow):
         
         self.cmb_reg_carrera = QComboBox()
         carreras_utesa = [
-            "Ninguna / No Aplica", "Arquitectura", "Ingeniería Civil", "Ingeniería Electrónica",
-            "Ingeniería en Sistemas Computacionales", "Ingeniería Industrial", "Medicina",
-            "Odontología", "Enfermería", "Derecho", "Administración de Empresas",
-            "Administración de Empresas Turísticas", "Contabilidad", "Mercadeo",
-            "Psicología", "Comunicación Social", "Educación", "Lenguas Extranjeras/Modernas", "Nutricion Humana y Dietetica"
+            "Ninguna / No Aplica",
+            "Administración de Empresas",
+            "Admin. de Emp. Turísticas y Hoteleras",
+            "Arquitectura",
+            "Comunicación Social",
+            "Contabilidad",
+            "Derecho",
+            "Diseño de Interiores",
+            "Educación",
+            "Enfermería",
+            "Ingeniería Civil",
+            "Ingeniería Electrónica",
+            "Ingeniería en Sistemas Computacionales",
+            "Ingeniería Industrial",
+            "Ingeniería Mecánica",
+            "Lenguas Extranjeras/Modernas",
+            "Marketing y Comunicación Digital",
+            "Medicina",
+            "Mercadeo",
+            "Nutrición Humana y Dietética",
+            "Odontología",
+            "Optometría",
+            "Psicología"
         ]
         self.cmb_reg_carrera.addItems(carreras_utesa)
         self.cmb_reg_carrera.setStyleSheet("background-color: white; color: #1E293B; font-size: 14px; min-height: 40px; border: 1px solid #CBD5E1;")
