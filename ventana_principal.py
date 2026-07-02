@@ -6,7 +6,7 @@ from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, 
     QLabel, QLineEdit, QPushButton, QComboBox, QTableWidget, 
     QTableWidgetItem, QStackedWidget, QFormLayout, QHeaderView, 
-    QMessageBox, QDialog, QGridLayout, QFrame
+    QMessageBox, QDialog, QGridLayout, QFrame, QSizePolicy
 )
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QPixmap
@@ -226,6 +226,33 @@ class SistemaBiblioteca(QMainWindow):
         self.nav_widget_kiosco.setLayout(self.barra_navegacion(1))
         layout_global.addWidget(self.nav_widget_kiosco)
         
+        # --- Selector de Recinto de Biblioteca ---
+        self.lay_kiosco_top = QHBoxLayout()
+        lbl_bib = QLabel("📍 Recinto Actual:")
+        lbl_bib.setStyleSheet("font-weight: bold; font-size: 16px; color: #1E293B;")
+        
+        self.cmb_kiosco_biblioteca = QComboBox()
+        self.cmb_kiosco_biblioteca.addItems([
+            "Seleccione un recinto...",
+            "Biblioteca Coral Mall",
+            "Biblioteca Herrera H-A",
+            "Biblioteca Herrera H-B",
+            "Biblioteca Maximo Gomez Edif. C",
+            "Biblioteca Maximo Gomez Edif. D",
+            "Biblioteca Ozama"
+        ])
+        self.cmb_kiosco_biblioteca.setStyleSheet("font-size: 16px; padding: 5px; min-height: 40px;")
+        self.cmb_kiosco_biblioteca.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        
+        self.index_biblioteca_anterior = 0
+        self.cmb_kiosco_biblioteca.currentIndexChanged.connect(self.verificar_cambio_biblioteca)
+        
+        self.lay_kiosco_top.addWidget(lbl_bib)
+        self.lay_kiosco_top.addWidget(self.cmb_kiosco_biblioteca)
+        self.lay_kiosco_top.addStretch(2)
+        
+        layout_global.addLayout(self.lay_kiosco_top)
+        
         layout_kiosco_master = QVBoxLayout()
         layout_kiosco_master.setContentsMargins(20, 20, 20, 20)
         self.kiosco_stack = QStackedWidget()
@@ -242,10 +269,12 @@ class SistemaBiblioteca(QMainWindow):
         
         btn_k_ingresar = QPushButton("INGRESAR AL SALÓN")
         btn_k_ingresar.setStyleSheet("background-color: #0EA5E9; color: white; font-size: 24px; font-weight: bold; border-radius: 15px; min-height: 140px;")
+        btn_k_ingresar.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         btn_k_ingresar.clicked.connect(lambda: self.kiosco_stack.setCurrentIndex(1))
         
         btn_k_registrar = QPushButton("REGISTRARME COMO NUEVO USUARIO")
         btn_k_registrar.setStyleSheet("background-color: #0F172A; color: white; font-size: 24px; font-weight: bold; border-radius: 15px; min-height: 140px;")
+        btn_k_registrar.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         btn_k_registrar.clicked.connect(lambda: self.kiosco_stack.setCurrentIndex(2))
         
         self.btn_k_fullscreen = QPushButton("🖵 BLOQUEAR EN PANTALLA COMPLETA")
@@ -257,14 +286,13 @@ class SistemaBiblioteca(QMainWindow):
         lay_ini.addWidget(self.btn_k_fullscreen, 0, Qt.AlignmentFlag.AlignCenter)
         self.kiosco_stack.addWidget(self.p_kiosco_inicio)
         
-# =====================================================================
-        # 2.2 KEYPAD DE INGRESO (CENTRO, ABAJO DEL INPUT)
+        # =====================================================================
+        # 2.2 KEYPAD DE INGRESO
         # =====================================================================
         self.p_kiosco_ingreso = QWidget()
         lay_ing = QVBoxLayout(self.p_kiosco_ingreso) 
         lay_ing.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
-        # --- Formulario de Ingreso (Arriba) ---
         form_ingreso_layout = QVBoxLayout()
         form_ingreso_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
@@ -275,20 +303,24 @@ class SistemaBiblioteca(QMainWindow):
         self.txt_ingreso_id = QLineEdit()
         self.txt_ingreso_id.setStyleSheet("font-size: 28px; min-height: 60px; border: 3px solid #0EA5E9; border-radius: 8px; padding: 5px; background-color: white; color: #1E293B;")
         self.txt_ingreso_id.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.txt_ingreso_id.setMinimumWidth(400)
-        self.txt_ingreso_id.setMaximumWidth(500)
+        self.txt_ingreso_id.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
 
         btn_ing_aceptar = QPushButton("CONFIRMAR ENTRADA")
         btn_ing_aceptar.setStyleSheet("background-color: #10B981; color: white; font-size: 20px; font-weight: bold; min-height: 60px; border-radius: 8px;")
-        btn_ing_aceptar.setMinimumWidth(400)
-        btn_ing_aceptar.setMaximumWidth(500)
+        btn_ing_aceptar.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         btn_ing_aceptar.clicked.connect(self.procesar_ingreso_salon)
+        
+        # Layout responsivo centrado horizontalmente
+        h_form_ing = QHBoxLayout()
+        h_form_ing.addStretch(1)
+        v_form_inner = QVBoxLayout()
+        v_form_inner.addWidget(lbl_ing_tit, 0, Qt.AlignmentFlag.AlignCenter)
+        v_form_inner.addWidget(self.txt_ingreso_id)
+        v_form_inner.addWidget(btn_ing_aceptar)
+        h_form_ing.addLayout(v_form_inner, 3) 
+        h_form_ing.addStretch(1)
 
-        form_ingreso_layout.addWidget(lbl_ing_tit, 0, Qt.AlignmentFlag.AlignCenter)
-        form_ingreso_layout.addWidget(self.txt_ingreso_id, 0, Qt.AlignmentFlag.AlignCenter)
-        form_ingreso_layout.addWidget(btn_ing_aceptar, 0, Qt.AlignmentFlag.AlignCenter)
-
-        # --- Teclado Numérico (Abajo) ---
+        # Teclado Numérico
         grid_keypad = QGridLayout()
         grid_keypad.setSpacing(10)
         grid_keypad.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -297,7 +329,8 @@ class SistemaBiblioteca(QMainWindow):
         for boton in botones_pad:
             btn_pad = QPushButton(boton)
             btn_pad.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-            btn_pad.setFixedSize(90, 90) # Tamaño cuadrado para el keypad
+            btn_pad.setMinimumSize(90, 90)
+            btn_pad.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
             btn_pad.setStyleSheet("background-color: white; color: #1E293B; border: 2px solid #CBD5E1; font-size: 22px; font-weight: bold; border-radius: 10px;")
             btn_pad.clicked.connect(self.tecla_num_presionada)
             grid_keypad.addWidget(btn_pad, row, col)
@@ -305,33 +338,41 @@ class SistemaBiblioteca(QMainWindow):
             if col > 2:
                 col = 0
                 row += 1
+                
+        h_pad_ing = QHBoxLayout()
+        h_pad_ing.addStretch(1)
+        h_pad_ing.addLayout(grid_keypad, 2)
+        h_pad_ing.addStretch(1)
 
         btn_ing_volver = QPushButton("Volver Atrás")
         btn_ing_volver.setStyleSheet("background-color: #64748B; color: white; font-size: 16px; min-height: 45px;")
-        btn_ing_volver.setMinimumWidth(300)
-        btn_ing_volver.setMaximumWidth(400)
+        btn_ing_volver.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         btn_ing_volver.clicked.connect(self.limpiar_volver_kiosco)
+        
+        h_volver_ing = QHBoxLayout()
+        h_volver_ing.addStretch(1)
+        h_volver_ing.addWidget(btn_ing_volver, 2)
+        h_volver_ing.addStretch(1)
 
-        # --- Ensamblaje Final Vista 2 ---
         lay_ing.addStretch(1)
-        lay_ing.addLayout(form_ingreso_layout)
+        lay_ing.addLayout(h_form_ing)
         lay_ing.addSpacing(30)
-        lay_ing.addLayout(grid_keypad)
+        lay_ing.addLayout(h_pad_ing)
         lay_ing.addSpacing(30)
-        lay_ing.addWidget(btn_ing_volver, 0, Qt.AlignmentFlag.AlignCenter)
+        lay_ing.addLayout(h_volver_ing)
         lay_ing.addStretch(1)
 
         self.kiosco_stack.addWidget(self.p_kiosco_ingreso)
         
         # =====================================================================
-        # 2.3 REGISTRO TÁCTIL (CENTRO, ABAJO DEL FORMULARIO)
+        # 2.3 REGISTRO TÁCTIL
         # =====================================================================
         self.p_kiosco_registro = QWidget()
         lay_reg_maestro = QVBoxLayout(self.p_kiosco_registro)
         lay_reg_maestro.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
-        # --- Formulario de Registro (Arriba) ---
         container_form = QWidget()
+        container_form.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         col_form = QVBoxLayout(container_form)
         col_form.setContentsMargins(0, 0, 0, 0)
         
@@ -363,29 +404,12 @@ class SistemaBiblioteca(QMainWindow):
         
         self.cmb_reg_carrera = QComboBox()
         carreras_utesa = [
-            "Ninguna / No Aplica",
-            "Administración de Empresas",
-            "Admin. de Emp. Turísticas y Hoteleras",
-            "Arquitectura",
-            "Comunicación Social",
-            "Contabilidad",
-            "Derecho",
-            "Diseño de Interiores",
-            "Educación",
-            "Enfermería",
-            "Ingeniería Civil",
-            "Ingeniería Electrónica",
-            "Ingeniería en Sistemas Computacionales",
-            "Ingeniería Industrial",
-            "Ingeniería Mecánica",
-            "Lenguas Extranjeras/Modernas",
-            "Marketing y Comunicación Digital",
-            "Medicina",
-            "Mercadeo",
-            "Nutrición Humana y Dietética",
-            "Odontología",
-            "Optometría",
-            "Psicología"
+            "Ninguna / No Aplica", "Administración de Empresas", "Admin. de Emp. Turísticas y Hoteleras",
+            "Arquitectura", "Comunicación Social", "Contabilidad", "Derecho", "Diseño de Interiores",
+            "Educación", "Enfermería", "Ingeniería Civil", "Ingeniería Electrónica",
+            "Ingeniería en Sistemas Computacionales", "Ingeniería Industrial", "Ingeniería Mecánica",
+            "Lenguas Extranjeras/Modernas", "Marketing y Comunicación Digital", "Medicina",
+            "Mercadeo", "Nutrición Humana y Dietética", "Odontología", "Optometría", "Psicología"
         ]
         self.cmb_reg_carrera.addItems(carreras_utesa)
         self.cmb_reg_carrera.setStyleSheet("background-color: white; color: #1E293B; font-size: 14px; min-height: 40px; border: 1px solid #CBD5E1;")
@@ -406,9 +430,13 @@ class SistemaBiblioteca(QMainWindow):
         btn_reg_guardar.clicked.connect(self.procesar_registro_usuario)
         col_form.addWidget(btn_reg_guardar)
 
-        container_form.setMaximumWidth(600) # Evita que el formulario sea demasiado ancho
+        # Layout responsivo para el formulario
+        h_form_reg = QHBoxLayout()
+        h_form_reg.addStretch(1)
+        h_form_reg.addWidget(container_form, 4)
+        h_form_reg.addStretch(1)
 
-        # --- Teclado QWERTY (Abajo) ---
+        # Teclado QWERTY
         col_teclado = QVBoxLayout()
         col_teclado.setAlignment(Qt.AlignmentFlag.AlignCenter)
         grid_qwerty = QGridLayout()
@@ -428,7 +456,7 @@ class SistemaBiblioteca(QMainWindow):
                 btn_tecla = QPushButton(tecla)
                 btn_tecla.setFocusPolicy(Qt.FocusPolicy.NoFocus)
                 btn_tecla.setMinimumHeight(55)
-                btn_tecla.setMinimumWidth(60)
+                btn_tecla.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
                 btn_tecla.setStyleSheet("background-color: white; color: #1E293B; border: 1px solid #CBD5E1; font-size: 18px; font-weight: bold; border-radius: 6px;")
                 if tecla == 'Espacio':
                     grid_qwerty.addWidget(btn_tecla, r_idx, c_idx, 1, 4) 
@@ -436,23 +464,26 @@ class SistemaBiblioteca(QMainWindow):
                     grid_qwerty.addWidget(btn_tecla, r_idx, c_idx + 3, 1, 3) 
                 else:
                     grid_qwerty.addWidget(btn_tecla, r_idx, c_idx)
-                
                 btn_tecla.clicked.connect(self.tecla_alfa_presionada)
         
         col_teclado.addLayout(grid_qwerty)
         
         btn_reg_volver = QPushButton("Volver Atrás")
         btn_reg_volver.setStyleSheet("background-color: #64748B; color: white; font-size: 14px; min-height: 40px;")
-        btn_reg_volver.setMaximumWidth(400)
+        btn_reg_volver.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         btn_reg_volver.clicked.connect(self.limpiar_volver_kiosco)
+        
+        h_volver_reg = QHBoxLayout()
+        h_volver_reg.addStretch(1)
+        h_volver_reg.addWidget(btn_reg_volver, 3)
+        h_volver_reg.addStretch(1)
 
-        # --- Ensamblaje Final Vista 3 ---
         lay_reg_maestro.addStretch(1)
-        lay_reg_maestro.addWidget(container_form, 0, Qt.AlignmentFlag.AlignCenter)
+        lay_reg_maestro.addLayout(h_form_reg)
         lay_reg_maestro.addSpacing(20)
         lay_reg_maestro.addLayout(col_teclado)
         lay_reg_maestro.addSpacing(20)
-        lay_reg_maestro.addWidget(btn_reg_volver, 0, Qt.AlignmentFlag.AlignCenter)
+        lay_reg_maestro.addLayout(h_volver_reg)
         lay_reg_maestro.addStretch(1)
         
         self.kiosco_stack.addWidget(self.p_kiosco_registro)
@@ -489,6 +520,30 @@ class SistemaBiblioteca(QMainWindow):
             self.nav_widget_kiosco.hide()
             self.btn_k_fullscreen.setText("🔓 DESBLOQUEAR Y SALIR DE PANTALLA COMPLETA")
             self.btn_k_fullscreen.setStyleSheet("background-color: #EF4444; color: white; font-size: 16px; font-weight: bold; border-radius: 8px; padding: 15px;")
+
+    def verificar_cambio_biblioteca(self, index):
+        if self.index_biblioteca_anterior != 0:
+            dialogo = QDialog(self)
+            dialogo.setWindowTitle("Seguridad - Cambio de Recinto")
+            lay_d = QVBoxLayout(dialogo)
+            lay_d.addWidget(QLabel("Contraseña administrativa para cambiar recinto:"))
+            txt_pass = QLineEdit()
+            txt_pass.setEchoMode(QLineEdit.EchoMode.Password)
+            lay_d.addWidget(txt_pass)
+            btn_d = QPushButton("Confirmar")
+            btn_d.setStyleSheet("background-color: #0F172A; color: white; min-height: 35px;")
+            btn_d.clicked.connect(dialogo.accept)
+            lay_d.addWidget(btn_d)
+            
+            if dialogo.exec() == QDialog.DialogCode.Accepted and txt_pass.text() == "1234":
+                self.index_biblioteca_anterior = index
+            else:
+                QMessageBox.warning(self, "Acceso Denegado", "Clave incorrecta. El recinto no se ha modificado.")
+                self.cmb_kiosco_biblioteca.blockSignals(True)
+                self.cmb_kiosco_biblioteca.setCurrentIndex(self.index_biblioteca_anterior)
+                self.cmb_kiosco_biblioteca.blockSignals(False)
+        else:
+            self.index_biblioteca_anterior = index
 
     def tecla_num_presionada(self):
         btn = self.sender()
@@ -533,17 +588,27 @@ class SistemaBiblioteca(QMainWindow):
         self.kiosco_stack.setCurrentIndex(0)
 
     def procesar_ingreso_salon(self):
+        biblioteca = self.cmb_kiosco_biblioteca.currentText()
+        if self.cmb_kiosco_biblioteca.currentIndex() == 0:
+            QMessageBox.warning(self, "Aviso", "Debe seleccionar el recinto actual en la parte superior antes de continuar.")
+            return
+
         ident = self.txt_ingreso_id.text().strip()
         if not ident: return
         res = base_datos.buscar_usuario(ident)
         if res:
-            base_datos.registrar_acceso(res[0])
+            base_datos.registrar_acceso(res[0], biblioteca)
             QMessageBox.information(self, "Adelante", f"Bienvenido/a {res[1]}")
             self.limpiar_volver_kiosco()
         else:
             QMessageBox.warning(self, "Error", "ID no registrada. Vaya a Nuevo Usuario.")
 
     def procesar_registro_usuario(self):
+        biblioteca = self.cmb_kiosco_biblioteca.currentText()
+        if self.cmb_kiosco_biblioteca.currentIndex() == 0:
+            QMessageBox.warning(self, "Aviso", "Debe seleccionar el recinto actual en la parte superior antes de continuar.")
+            return
+
         cedula = self.txt_reg_cedula.text().strip()
         matricula = self.txt_reg_matricula.text().strip()
         nombre = self.txt_reg_nombre.text().strip()
@@ -562,7 +627,7 @@ class SistemaBiblioteca(QMainWindow):
             return
             
         try:
-            base_datos.registrar_nuevo_usuario(cedula, matricula, nombre, tipo, carrera)
+            base_datos.registrar_nuevo_usuario(cedula, matricula, nombre, tipo, carrera, biblioteca)
             QMessageBox.information(self, "Éxito", f"¡Registro completado {nombre}!")
             self.limpiar_volver_kiosco()
         except psycopg2.IntegrityError:

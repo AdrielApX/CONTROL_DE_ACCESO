@@ -33,9 +33,13 @@ def inicializar_bd():
     CREATE TABLE IF NOT EXISTS accesos_salon (
         id SERIAL PRIMARY KEY,
         usuario_id INTEGER REFERENCES usuarios(id) ON DELETE CASCADE,
-        fecha_hora TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        fecha_hora TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        biblioteca VARCHAR(100)
     );
     """)
+    
+    # Parche de seguridad por si la tabla ya existe y no tiene la columna nueva
+    cursor.execute("ALTER TABLE accesos_salon ADD COLUMN IF NOT EXISTS biblioteca VARCHAR(100);")
     
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS prestamos_pc (
@@ -95,7 +99,6 @@ def actualizar_estado_equipo(id_pc, nuevo_estado):
 def guardar_asignacion(usuario_id, id_pc):
     conn = obtener_conexion()
     cursor = conn.cursor()
-    # Forzamos la zona horaria de RD para la fecha
     cursor.execute("""
         INSERT INTO prestamos_pc (usuario_id, equipo_id, fecha_prestamo) 
         VALUES (%s, %s, (CURRENT_TIMESTAMP AT TIME ZONE 'America/Santo_Domingo')::date)
@@ -103,18 +106,17 @@ def guardar_asignacion(usuario_id, id_pc):
     conn.commit()
     conn.close()
 
-def registrar_acceso(usuario_id):
+def registrar_acceso(usuario_id, biblioteca):
     conn = obtener_conexion()
     cursor = conn.cursor()
-    # Forzamos la zona horaria de RD para la fecha y hora
     cursor.execute("""
-        INSERT INTO accesos_salon (usuario_id, fecha_hora) 
-        VALUES (%s, CURRENT_TIMESTAMP AT TIME ZONE 'America/Santo_Domingo')
-    """, (usuario_id,))
+        INSERT INTO accesos_salon (usuario_id, fecha_hora, biblioteca) 
+        VALUES (%s, CURRENT_TIMESTAMP AT TIME ZONE 'America/Santo_Domingo', %s)
+    """, (usuario_id, biblioteca))
     conn.commit()
     conn.close()
 
-def registrar_nuevo_usuario(cedula, matricula, nombre, tipo, carrera):
+def registrar_nuevo_usuario(cedula, matricula, nombre, tipo, carrera, biblioteca):
     conn = obtener_conexion()
     cursor = conn.cursor()
     cursor.execute(
@@ -124,11 +126,10 @@ def registrar_nuevo_usuario(cedula, matricula, nombre, tipo, carrera):
     )
     nuevo_id = cursor.fetchone()[0]
     
-    # Forzamos la zona horaria de RD al crear el primer acceso
     cursor.execute("""
-        INSERT INTO accesos_salon (usuario_id, fecha_hora) 
-        VALUES (%s, CURRENT_TIMESTAMP AT TIME ZONE 'America/Santo_Domingo')
-    """, (nuevo_id,))
+        INSERT INTO accesos_salon (usuario_id, fecha_hora, biblioteca) 
+        VALUES (%s, CURRENT_TIMESTAMP AT TIME ZONE 'America/Santo_Domingo', %s)
+    """, (nuevo_id, biblioteca))
     conn.commit()
     conn.close()
 
@@ -150,6 +151,7 @@ def obtener_datos_metricas(f_inicio, f_fin):
         COALESCE(u.carrera, 'N/A') AS "Carrera",
         TO_CHAR(MAX(a.fecha_hora), 'YYYY-MM-DD') AS "Última Fecha",
         TO_CHAR(MAX(a.fecha_hora), 'HH12:MI:SS AM') AS "Última Hora",
+        COALESCE(MAX(a.biblioteca), 'N/A') AS "Última Biblioteca",
         COUNT(a.id) AS "Veces Salón"
         {cols_pcs}
     FROM usuarios u
