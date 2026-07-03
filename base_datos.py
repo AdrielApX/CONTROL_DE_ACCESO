@@ -41,6 +41,9 @@ def inicializar_bd():
     # Parche de seguridad por si la tabla ya existe y no tiene la columna nueva
     cursor.execute("ALTER TABLE accesos_salon ADD COLUMN IF NOT EXISTS biblioteca VARCHAR(100);")
     
+    # Nuevo parche para asegurar que exista la columna de bloqueo
+    cursor.execute("ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS bloqueado BOOLEAN DEFAULT FALSE;")
+    
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS prestamos_pc (
         id SERIAL PRIMARY KEY,
@@ -77,7 +80,12 @@ def obtener_todas_pcs():
 def buscar_usuario(ident):
     conn = obtener_conexion()
     cursor = conn.cursor()
-    cursor.execute("SELECT id, nombre_completo, tipo_usuario, carrera FROM usuarios WHERE cedula = %s OR matricula = %s", (ident, ident))
+    # Actualizado para traer también el estado de bloqueo (COALESCE evita valores nulos)
+    cursor.execute("""
+        SELECT id, nombre_completo, tipo_usuario, carrera, COALESCE(bloqueado, FALSE) 
+        FROM usuarios 
+        WHERE cedula = %s OR matricula = %s
+    """, (ident, ident))
     res = cursor.fetchone()
     conn.close()
     return res
@@ -167,3 +175,51 @@ def obtener_datos_metricas(f_inicio, f_fin):
     datos = cursor.fetchall()
     conn.close()
     return headers, datos
+
+# ==========================================
+# NUEVAS FUNCIONES PARA GESTIÓN DE USUARIOS
+# ==========================================
+
+def obtener_usuarios_gestion(filtro=""):
+    conexion = obtener_conexion() # <-- Usando tu función real
+    cursor = conexion.cursor()
+    if filtro:
+        query = """
+            SELECT id, cedula, matricula, nombre_completo, tipo_usuario, carrera, COALESCE(bloqueado, FALSE) 
+            FROM usuarios 
+            WHERE cedula ILIKE %s OR matricula ILIKE %s 
+            ORDER BY id DESC
+        """
+        cursor.execute(query, (f'%{filtro}%', f'%{filtro}%'))
+    else:
+        query = "SELECT id, cedula, matricula, nombre_completo, tipo_usuario, carrera, COALESCE(bloqueado, FALSE) FROM usuarios ORDER BY id DESC"
+        cursor.execute(query)
+    res = cursor.fetchall()
+    conexion.close()
+    return res
+
+def eliminar_usuario(id_usuario):
+    conexion = obtener_conexion()
+    cursor = conexion.cursor()
+    cursor.execute("DELETE FROM usuarios WHERE id = %s", (id_usuario,))
+    conexion.commit()
+    conexion.close()
+
+def actualizar_usuario(id_usuario, cedula, matricula, nombre, tipo, carrera):
+    conexion = obtener_conexion()
+    cursor = conexion.cursor()
+    cursor.execute("""
+        UPDATE usuarios 
+        SET cedula = %s, matricula = %s, nombre_completo = %s, tipo_usuario = %s, carrera = %s 
+        WHERE id = %s
+    """, (cedula, matricula, nombre, tipo, carrera, id_usuario))
+    conexion.commit()
+    conexion.close()
+
+def alternar_bloqueo_usuario(id_usuario, estado_actual):
+    conexion = obtener_conexion()
+    cursor = conexion.cursor()
+    nuevo_estado = not estado_actual
+    cursor.execute("UPDATE usuarios SET bloqueado = %s WHERE id = %s", (nuevo_estado, id_usuario))
+    conexion.commit()
+    conexion.close()

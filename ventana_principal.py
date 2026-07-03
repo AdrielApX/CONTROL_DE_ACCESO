@@ -16,13 +16,62 @@ from openpyxl.styles import Font, PatternFill
 import base_datos
 
 # =====================================================================
+# DIÁLOGO DE EDICIÓN DE USUARIO
+# =====================================================================
+class DialogoEditarUsuario(QDialog):
+    def __init__(self, datos, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Editar Usuario")
+        self.setMinimumWidth(400)
+        self.id_usuario = datos[0]
+        
+        layout = QVBoxLayout(self)
+        form = QFormLayout()
+        
+        self.txt_cedula = QLineEdit(datos[1])
+        self.txt_matricula = QLineEdit(datos[2])
+        self.txt_nombre = QLineEdit(datos[3])
+        
+        self.cmb_tipo = QComboBox()
+        self.cmb_tipo.addItems(["Estudiante", "Profesor", "Empleado", "Invitado"])
+        self.cmb_tipo.setCurrentText(datos[4])
+        
+        self.cmb_carrera = QComboBox()
+        carreras = ["", "Ninguna / No Aplica", "Administración de Empresas", "Ingeniería en Sistemas Computacionales", "Arquitectura", "Derecho", "Medicina", "Psicología"]
+        self.cmb_carrera.addItems(carreras)
+        self.cmb_carrera.setEditable(True)
+        self.cmb_carrera.setCurrentText(datos[5] if datos[5] else "")
+        
+        form.addRow("Cédula:", self.txt_cedula)
+        form.addRow("Matrícula:", self.txt_matricula)
+        form.addRow("Nombre:", self.txt_nombre)
+        form.addRow("Tipo:", self.cmb_tipo)
+        form.addRow("Carrera:", self.cmb_carrera)
+        
+        layout.addLayout(form)
+        
+        btn_guardar = QPushButton("Guardar Cambios")
+        btn_guardar.setStyleSheet("background-color: #10B981; color: white; font-weight: bold; padding: 10px;")
+        btn_guardar.clicked.connect(self.accept)
+        layout.addWidget(btn_guardar)
+
+    def obtener_datos(self):
+        return (
+            self.txt_cedula.text().strip(),
+            self.txt_matricula.text().strip(),
+            self.txt_nombre.text().strip(),
+            self.cmb_tipo.currentText(),
+            self.cmb_carrera.currentText()
+        )
+
+# =====================================================================
 # 3. INTERFAZ PRINCIPAL
 # =====================================================================
 class SistemaBiblioteca(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("UTESA Plus - Control de Biblioteca")
-        self.resize(1200, 750)
+        self.setWindowTitle("UTESA Plus - Control de Acceso Salón de Lectura")
+        self.resize(1300, 750)
         
         self.usuario_actual_prestamo = None
         self.stacked_widget = QStackedWidget()
@@ -31,14 +80,17 @@ class SistemaBiblioteca(QMainWindow):
         self.vista_formulario_principal = QWidget()
         self.vista_kiosco_acceso = QWidget()
         self.vista_metricas = QWidget()
+        self.vista_usuarios = QWidget()
         
         self.stacked_widget.addWidget(self.vista_formulario_principal)
         self.stacked_widget.addWidget(self.vista_kiosco_acceso)
         self.stacked_widget.addWidget(self.vista_metricas)
+        self.stacked_widget.addWidget(self.vista_usuarios)
         
         self.crear_vista_formulario_principal()
         self.crear_vista_kiosco_acceso()
         self.crear_vista_metricas()
+        self.crear_vista_usuarios()
         
         self.stacked_widget.setCurrentIndex(0)
 
@@ -60,24 +112,31 @@ class SistemaBiblioteca(QMainWindow):
         btn1 = QPushButton("Formulario de Asignación de PCs")
         btn2 = QPushButton("Acceso Táctil")
         btn3 = QPushButton("Métricas y Reportes")
+        btn4 = QPushButton("Gestión de Usuarios")
         
-        for btn in [btn1, btn2, btn3]:
+        for btn in [btn1, btn2, btn3, btn4]:
             btn.setMinimumHeight(40)
             btn.setStyleSheet("background-color: #E2E8F0; color: #1E293B; font-weight: 500;")
             
         btn1.clicked.connect(lambda: self.stacked_widget.setCurrentIndex(0))
         btn2.clicked.connect(self.activar_modo_kiosco)
         btn3.clicked.connect(lambda: self.stacked_widget.setCurrentIndex(2))
+        btn4.clicked.connect(lambda: self.stacked_widget.setCurrentIndex(3))
         
         if index_actual == 0: btn1.setStyleSheet("background-color: #0EA5E9; color: white; font-weight: bold;")
         if index_actual == 1: btn2.setStyleSheet("background-color: #0EA5E9; color: white; font-weight: bold;")
         if index_actual == 2: btn3.setStyleSheet("background-color: #0EA5E9; color: white; font-weight: bold;")
+        if index_actual == 3: btn4.setStyleSheet("background-color: #0EA5E9; color: white; font-weight: bold;")
         
         layout.addWidget(btn1)
         layout.addWidget(btn2)
         layout.addWidget(btn3)
+        layout.addWidget(btn4)
         return layout
 
+    # =====================================================================
+    # VISTA 1: ASIGNACIÓN PC
+    # =====================================================================
     def crear_vista_formulario_principal(self):
         layout_global = QVBoxLayout(self.vista_formulario_principal)
         layout_global.addLayout(self.barra_navegacion(0))
@@ -178,6 +237,15 @@ class SistemaBiblioteca(QMainWindow):
         if not ident: return
         res = base_datos.buscar_usuario(ident)
         if res:
+            # Validación de bloqueo extraída de la respuesta de DB
+            esta_bloqueado = False
+            if len(res) > 4:
+                esta_bloqueado = res[4]
+            
+            if esta_bloqueado:
+                QMessageBox.warning(self, "Bloqueado", "Este usuario tiene el acceso bloqueado y no se le puede asignar PC.")
+                return
+
             self.usuario_actual_prestamo = res[0]
             self.lbl_form_datos.setText(f"Usuario: {res[1]}\nTipo: {res[2]}\nCarrera: {res[3] if res[3] else 'N/A'}")
         else:
@@ -261,29 +329,36 @@ class SistemaBiblioteca(QMainWindow):
         # 2.1 INICIO KIOSCO
         self.p_kiosco_inicio = QWidget()
         lay_ini = QVBoxLayout(self.p_kiosco_inicio)
-        lay_ini.setSpacing(30)
-        lbl_k_tit = QLabel("SISTEMA DE ACCESO - BIBLIOTECA")
+        lay_ini.setSpacing(20)
+        
+        lbl_k_tit = QLabel("SISTEMA DE ACCESO - SALÓN DE LECTURA")
         lbl_k_tit.setAlignment(Qt.AlignmentFlag.AlignCenter)
         lbl_k_tit.setStyleSheet("font-size: 32px; font-weight: bold; color: #0F172A; margin-bottom: 20px;")
         lay_ini.addWidget(lbl_k_tit)
         
         btn_k_ingresar = QPushButton("INGRESAR AL SALÓN")
-        btn_k_ingresar.setStyleSheet("background-color: #0EA5E9; color: white; font-size: 24px; font-weight: bold; border-radius: 15px; min-height: 140px;")
-        btn_k_ingresar.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        btn_k_ingresar.setStyleSheet("background-color: #0EA5E9; color: white; font-size: 20px; font-weight: bold; border-radius: 12px;")
+        btn_k_ingresar.setFixedSize(500, 90)
         btn_k_ingresar.clicked.connect(lambda: self.kiosco_stack.setCurrentIndex(1))
         
         btn_k_registrar = QPushButton("REGISTRARME COMO NUEVO USUARIO")
-        btn_k_registrar.setStyleSheet("background-color: #0F172A; color: white; font-size: 24px; font-weight: bold; border-radius: 15px; min-height: 140px;")
-        btn_k_registrar.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        btn_k_registrar.setStyleSheet("background-color: #0F172A; color: white; font-size: 20px; font-weight: bold; border-radius: 12px;")
+        btn_k_registrar.setFixedSize(500, 90)
         btn_k_registrar.clicked.connect(lambda: self.kiosco_stack.setCurrentIndex(2))
         
         self.btn_k_fullscreen = QPushButton("🖵 BLOQUEAR EN PANTALLA COMPLETA")
-        self.btn_k_fullscreen.setStyleSheet("background-color: #1E293B; color: white; font-size: 16px; font-weight: bold; border-radius: 8px; padding: 15px;")
+        self.btn_k_fullscreen.setStyleSheet("background-color: #1E293B; color: white; font-size: 14px; font-weight: bold; border-radius: 8px; padding: 10px;")
+        self.btn_k_fullscreen.setFixedSize(350, 45)
         self.btn_k_fullscreen.clicked.connect(self.alternar_pantalla_completa)
         
-        lay_ini.addWidget(btn_k_ingresar)
-        lay_ini.addWidget(btn_k_registrar)
+        lay_ini.addStretch(1)
+        lay_ini.addWidget(lbl_k_tit, 0, Qt.AlignmentFlag.AlignCenter)
+        lay_ini.addWidget(btn_k_ingresar, 0, Qt.AlignmentFlag.AlignCenter)
+        lay_ini.addWidget(btn_k_registrar, 0, Qt.AlignmentFlag.AlignCenter)
+        lay_ini.addSpacing(30)
         lay_ini.addWidget(self.btn_k_fullscreen, 0, Qt.AlignmentFlag.AlignCenter)
+        lay_ini.addStretch(1)
+        
         self.kiosco_stack.addWidget(self.p_kiosco_inicio)
         
         # =====================================================================
@@ -309,7 +384,7 @@ class SistemaBiblioteca(QMainWindow):
         btn_ing_aceptar.setStyleSheet("background-color: #10B981; color: white; font-size: 20px; font-weight: bold; min-height: 60px; border-radius: 8px;")
         btn_ing_aceptar.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         btn_ing_aceptar.clicked.connect(self.procesar_ingreso_salon)
-        
+
         # Layout responsivo centrado horizontalmente
         h_form_ing = QHBoxLayout()
         h_form_ing.addStretch(1)
@@ -320,7 +395,7 @@ class SistemaBiblioteca(QMainWindow):
         h_form_ing.addLayout(v_form_inner, 3) 
         h_form_ing.addStretch(1)
 
-        # Teclado Numérico
+        # Teclado Numéricos
         grid_keypad = QGridLayout()
         grid_keypad.setSpacing(10)
         grid_keypad.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -597,6 +672,16 @@ class SistemaBiblioteca(QMainWindow):
         if not ident: return
         res = base_datos.buscar_usuario(ident)
         if res:
+            # Control de acceso por bloqueo
+            esta_bloqueado = False
+            if len(res) > 4: 
+                esta_bloqueado = res[4]
+                
+            if esta_bloqueado:
+                QMessageBox.warning(self, "Acceso Denegado", "Tiene el acceso bloqueado.")
+                self.limpiar_volver_kiosco()
+                return
+                
             base_datos.registrar_acceso(res[0], biblioteca)
             QMessageBox.information(self, "Adelante", f"Bienvenido/a {res[1]}")
             self.limpiar_volver_kiosco()
@@ -708,3 +793,125 @@ class SistemaBiblioteca(QMainWindow):
             mensaje_error = traceback.format_exc()
             print(mensaje_error)
             QMessageBox.critical(self, "Error Crítico", f"Ocurrió un error al generar el Excel:\n\n{str(error_general)}\n\nRevisa la terminal para más detalles.")
+
+    # -----------------------------------------------------------------
+    # VISTA 4: GESTIÓN DE USUARIOS
+    # -----------------------------------------------------------------
+    def crear_vista_usuarios(self):
+        layout = QVBoxLayout(self.vista_usuarios)
+        layout.addLayout(self.barra_navegacion(3))
+
+        lbl_titulo = QLabel("Gestión Integral de Usuarios")
+        lbl_titulo.setStyleSheet("font-size: 20px; font-weight: bold; color: #0F172A; margin-bottom: 10px;")
+        layout.addWidget(lbl_titulo)
+
+        # Buscador
+        self.txt_buscar_gestion = QLineEdit()
+        self.txt_buscar_gestion.setPlaceholderText("🔍 Buscar usuario por cédula o matrícula...")
+        self.txt_buscar_gestion.setStyleSheet("font-size: 16px; padding: 8px; border: 2px solid #CBD5E1; border-radius: 6px;")
+        self.txt_buscar_gestion.textChanged.connect(self.actualizar_tabla_usuarios)
+        layout.addWidget(self.txt_buscar_gestion)
+
+        # Tabla de usuarios
+        self.tabla_usuarios = QTableWidget(0, 6)
+        self.tabla_usuarios.setHorizontalHeaderLabels(["Cédula", "Matrícula", "Nombre", "Tipo", "Carrera", "Acciones"])
+        self.tabla_usuarios.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        self.tabla_usuarios.horizontalHeader().setSectionResizeMode(5, QHeaderView.ResizeMode.ResizeToContents)
+        layout.addWidget(self.tabla_usuarios)
+        
+        # Cargar los datos la primera vez
+        self.actualizar_tabla_usuarios()
+
+    def actualizar_tabla_usuarios(self):
+        self.tabla_usuarios.setRowCount(0)
+        filtro = self.txt_buscar_gestion.text().strip()
+        
+        try:
+            usuarios = base_datos.obtener_usuarios_gestion(filtro)
+            for row_idx, row in enumerate(usuarios):
+                self.tabla_usuarios.insertRow(row_idx)
+                
+                # row: [0]id, [1]cedula, [2]matricula, [3]nombre, [4]tipo, [5]carrera, [6]bloqueado
+                self.tabla_usuarios.setItem(row_idx, 0, QTableWidgetItem(str(row[1] or "")))
+                self.tabla_usuarios.setItem(row_idx, 1, QTableWidgetItem(str(row[2] or "")))
+                self.tabla_usuarios.setItem(row_idx, 2, QTableWidgetItem(str(row[3] or "")))
+                self.tabla_usuarios.setItem(row_idx, 3, QTableWidgetItem(str(row[4] or "")))
+                self.tabla_usuarios.setItem(row_idx, 4, QTableWidgetItem(str(row[5] or "")))
+                
+                # Crear widget con los 3 botones para la celda de acciones
+                widget_acciones = QWidget()
+                lay_acciones = QHBoxLayout(widget_acciones)
+                lay_acciones.setContentsMargins(5, 2, 5, 2)
+                
+                # Botón Editar
+                btn_editar = QPushButton("Editar")
+                btn_editar.setStyleSheet("background-color: #F59E0B; color: white; padding: 4px 8px; border-radius: 4px; font-weight: bold;")
+                btn_editar.clicked.connect(lambda checked, datos=row: self.editar_usuario(datos))
+                
+                # Botón Borrar
+                btn_borrar = QPushButton("Borrar")
+                btn_borrar.setStyleSheet("background-color: #EF4444; color: white; padding: 4px 8px; border-radius: 4px; font-weight: bold;")
+                btn_borrar.clicked.connect(lambda checked, uid=row[0]: self.borrar_usuario(uid))
+                
+                # Botón Bloquear/Desbloquear
+                btn_bloquear = QPushButton()
+                esta_bloqueado = row[6]
+                if esta_bloqueado:
+                    btn_bloquear.setText("Desbloquear")
+                    btn_bloquear.setStyleSheet("background-color: #3B82F6; color: white; padding: 4px 8px; border-radius: 4px; font-weight: bold;") # Azul
+                else:
+                    btn_bloquear.setText("Bloquear")
+                    btn_bloquear.setStyleSheet("background-color: #6B7280; color: white; padding: 4px 8px; border-radius: 4px; font-weight: bold;") # Gris
+                
+                btn_bloquear.clicked.connect(lambda checked, uid=row[0], estado=esta_bloqueado: self.bloquear_usuario(uid, estado))
+                
+                lay_acciones.addWidget(btn_editar)
+                lay_acciones.addWidget(btn_borrar)
+                lay_acciones.addWidget(btn_bloquear)
+                
+                self.tabla_usuarios.setCellWidget(row_idx, 5, widget_acciones)
+        except Exception as e:
+            print("Error cargando usuarios:", e)
+
+    def editar_usuario(self, datos_usuario):
+        # Abre la ventana con los datos del usuario para modificarlos
+        dialogo = DialogoEditarUsuario(datos_usuario, self)
+        if dialogo.exec() == QDialog.DialogCode.Accepted:
+            nuevos_datos = dialogo.obtener_datos()
+            # nuevos_datos = (cedula, matricula, nombre, tipo, carrera)
+            try:
+                base_datos.actualizar_usuario(datos_usuario[0], *nuevos_datos)
+                QMessageBox.information(self, "Éxito", "Usuario actualizado correctamente.")
+                self.actualizar_tabla_usuarios()
+            except Exception as e:
+                QMessageBox.critical(self, "Error", f"No se pudo actualizar el usuario.\nDetalle: {e}")
+
+    def borrar_usuario(self, id_usuario):
+        msg = QMessageBox(self)
+        msg.setWindowTitle("Confirmar Eliminación")
+        msg.setText("¿Deseas eliminar ese usuario?")
+        msg.setIcon(QMessageBox.Icon.Warning)
+        
+        btn_aceptar = msg.addButton("Aceptar", QMessageBox.ButtonRole.AcceptRole)
+        btn_cancelar = msg.addButton("Cancelar", QMessageBox.ButtonRole.RejectRole)
+        
+        # Colores solicitados
+        btn_aceptar.setStyleSheet("background-color: red; color: white; padding: 5px 15px; font-weight: bold;")
+        btn_cancelar.setStyleSheet("background-color: green; color: white; padding: 5px 15px; font-weight: bold;")
+        
+        msg.exec()
+        
+        if msg.clickedButton() == btn_aceptar:
+            try:
+                base_datos.eliminar_usuario(id_usuario)
+                QMessageBox.information(self, "Eliminado", "El usuario ha sido borrado de la base de datos.")
+                self.actualizar_tabla_usuarios()
+            except Exception as e:
+                QMessageBox.critical(self, "Error", f"Hubo un problema al borrar el usuario.\nDetalle: {e}")
+
+    def bloquear_usuario(self, id_usuario, estado_actual):
+        try:
+            base_datos.alternar_bloqueo_usuario(id_usuario, estado_actual)
+            self.actualizar_tabla_usuarios() # Recarga la tabla para reflejar el cambio de color y texto
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"No se pudo cambiar el estado de bloqueo.\nDetalle: {e}")
