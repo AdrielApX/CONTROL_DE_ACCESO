@@ -6,10 +6,10 @@ from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, 
     QLabel, QLineEdit, QPushButton, QComboBox, QTableWidget, 
     QTableWidgetItem, QStackedWidget, QFormLayout, QHeaderView, 
-    QMessageBox, QDialog, QGridLayout, QFrame, QSizePolicy
+    QMessageBox, QDialog, QGridLayout, QFrame, QSizePolicy, QCheckBox
 )
-from PyQt6.QtCore import Qt
-from PyQt6.QtGui import QPixmap
+from PyQt6.QtCore import Qt, QRegularExpression
+from PyQt6.QtGui import QPixmap, QRegularExpressionValidator, QValidator
 from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill
 
@@ -237,7 +237,6 @@ class SistemaBiblioteca(QMainWindow):
         if not ident: return
         res = base_datos.buscar_usuario(ident)
         if res:
-            # Validación de bloqueo extraída de la respuesta de DB
             esta_bloqueado = False
             if len(res) > 4:
                 esta_bloqueado = res[4]
@@ -385,7 +384,6 @@ class SistemaBiblioteca(QMainWindow):
         btn_ing_aceptar.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         btn_ing_aceptar.clicked.connect(self.procesar_ingreso_salon)
 
-        # Layout responsivo centrado horizontalmente
         h_form_ing = QHBoxLayout()
         h_form_ing.addStretch(1)
         v_form_inner = QVBoxLayout()
@@ -395,7 +393,6 @@ class SistemaBiblioteca(QMainWindow):
         h_form_ing.addLayout(v_form_inner, 3) 
         h_form_ing.addStretch(1)
 
-        # Teclado Numéricos
         grid_keypad = QGridLayout()
         grid_keypad.setSpacing(10)
         grid_keypad.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -463,15 +460,35 @@ class SistemaBiblioteca(QMainWindow):
         form_reg = QFormLayout()
         form_reg.setSpacing(10)
         
+        # --- NUEVO: Validadores ---
+        self.validador_solo_numeros = QRegularExpressionValidator(QRegularExpression("^[0-9]*$"))
+        self.validador_alfanumerico = QRegularExpressionValidator(QRegularExpression("^[a-zA-Z0-9]*$"))
+        self.validador_solo_letras = QRegularExpressionValidator(QRegularExpression("^[a-zA-ZáéíóúÁÉÍÓÚñÑ\s]*$"))
+        
+        # --- Configuración de inputs ---
         estilo_input = "font-size: 16px; min-height: 40px; border: 2px solid #CBD5E1; border-radius: 6px; padding: 5px; background-color: white; color: #1E293B;"
         
         self.txt_reg_cedula = QLineEdit()
         self.txt_reg_cedula.setStyleSheet(estilo_input)
+        self.txt_reg_cedula.setValidator(self.validador_solo_numeros) 
+        
         self.txt_reg_matricula = QLineEdit()
         self.txt_reg_matricula.setStyleSheet(estilo_input)
+        self.txt_reg_matricula.setValidator(self.validador_solo_numeros) 
+        
         self.txt_reg_nombre = QLineEdit()
         self.txt_reg_nombre.setStyleSheet(estilo_input)
+        self.txt_reg_nombre.setValidator(self.validador_solo_letras) 
         
+        # --- Checkbox para Extranjero ---
+        self.chk_extranjero = QCheckBox("Extranjero")
+        self.chk_extranjero.setStyleSheet("font-size: 14px; font-weight: bold; color: #1E293B;")
+        self.chk_extranjero.toggled.connect(self.alternar_modo_cedula)
+        
+        lay_cedula = QHBoxLayout()
+        lay_cedula.addWidget(self.txt_reg_cedula)
+        lay_cedula.addWidget(self.chk_extranjero)
+
         self.cmb_reg_tipo = QComboBox()
         self.cmb_reg_tipo.addItems(["Estudiante", "Profesor", "Empleado", "Invitado"])
         self.cmb_reg_tipo.setStyleSheet("background-color: white; color: #1E293B; font-size: 16px; min-height: 40px; border: 1px solid #CBD5E1;")
@@ -492,7 +509,7 @@ class SistemaBiblioteca(QMainWindow):
         self.lbl_alerta_estudiante = QLabel("* Matrícula y Carrera obligatorias para Estudiantes")
         self.lbl_alerta_estudiante.setStyleSheet("color: #EF4444; font-weight: bold; font-size: 12px;")
         
-        form_reg.addRow(QLabel("Cédula:"), self.txt_reg_cedula)
+        form_reg.addRow(QLabel("Cédula o ID:"), lay_cedula)
         form_reg.addRow(QLabel("Matrícula:"), self.txt_reg_matricula)
         form_reg.addRow(QLabel("Nombre Completo:"), self.txt_reg_nombre)
         form_reg.addRow(QLabel("Tipo de Usuario:"), self.cmb_reg_tipo)
@@ -505,7 +522,6 @@ class SistemaBiblioteca(QMainWindow):
         btn_reg_guardar.clicked.connect(self.procesar_registro_usuario)
         col_form.addWidget(btn_reg_guardar)
 
-        # Layout responsivo para el formulario
         h_form_reg = QHBoxLayout()
         h_form_reg.addStretch(1)
         h_form_reg.addWidget(container_form, 4)
@@ -620,13 +636,37 @@ class SistemaBiblioteca(QMainWindow):
         else:
             self.index_biblioteca_anterior = index
 
+    def alternar_modo_cedula(self, es_extranjero):
+        if es_extranjero:
+            self.txt_reg_cedula.setValidator(self.validador_alfanumerico)
+        else:
+            self.txt_reg_cedula.setValidator(self.validador_solo_numeros)
+            texto_actual = self.txt_reg_cedula.text()
+            if not texto_actual.isdigit():
+                self.txt_reg_cedula.clear()
+
     def tecla_num_presionada(self):
         btn = self.sender()
         texto_tecla = btn.text()
-        texto_actual = self.txt_ingreso_id.text()
-        if texto_tecla == "Limpiar": self.txt_ingreso_id.clear()
-        elif texto_tecla == "Borrar": self.txt_ingreso_id.setText(texto_actual[:-1])
-        else: self.txt_ingreso_id.setText(texto_actual + texto_tecla)
+        widget_activo = self.txt_ingreso_id
+        
+        texto_actual = widget_activo.text()
+        if texto_tecla == "Limpiar": 
+            widget_activo.clear()
+            return
+        elif texto_tecla == "Borrar": 
+            widget_activo.setText(texto_actual[:-1])
+            return
+            
+        nuevo_texto = texto_actual + texto_tecla
+        
+        validador = widget_activo.validator()
+        if validador:
+            estado, _, _ = validador.validate(nuevo_texto, len(nuevo_texto))
+            if estado in [QValidator.State.Acceptable, QValidator.State.Intermediate]:
+                widget_activo.setText(nuevo_texto)
+        else:
+            widget_activo.setText(nuevo_texto)
 
     def tecla_alfa_presionada(self):
         btn = self.sender()
@@ -638,12 +678,21 @@ class SistemaBiblioteca(QMainWindow):
             texto_actual = widget_activo.text()
             if tecla == "Limpiar":
                 widget_activo.clear()
+                return
             elif tecla == "Borrar":
                 widget_activo.setText(texto_actual[:-1])
-            elif tecla == "Espacio":
-                widget_activo.setText(texto_actual + " ")
+                return
+            
+            caracter = " " if tecla == "Espacio" else tecla
+            nuevo_texto = texto_actual + caracter
+            
+            validador = widget_activo.validator()
+            if validador:
+                estado, _, _ = validador.validate(nuevo_texto, len(nuevo_texto))
+                if estado in [QValidator.State.Acceptable, QValidator.State.Intermediate]:
+                    widget_activo.setText(nuevo_texto)
             else:
-                widget_activo.setText(texto_actual + tecla)
+                widget_activo.setText(nuevo_texto)
 
     def evaluar_obligatoriedad_estudiante(self, tipo):
         if tipo == "Estudiante":
@@ -660,6 +709,7 @@ class SistemaBiblioteca(QMainWindow):
         self.txt_reg_nombre.clear()
         self.cmb_reg_tipo.setCurrentIndex(0)
         self.cmb_reg_carrera.setCurrentIndex(0)
+        self.chk_extranjero.setChecked(False)
         self.kiosco_stack.setCurrentIndex(0)
 
     def procesar_ingreso_salon(self):
@@ -672,7 +722,6 @@ class SistemaBiblioteca(QMainWindow):
         if not ident: return
         res = base_datos.buscar_usuario(ident)
         if res:
-            # Control de acceso por bloqueo
             esta_bloqueado = False
             if len(res) > 4: 
                 esta_bloqueado = res[4]
@@ -805,21 +854,18 @@ class SistemaBiblioteca(QMainWindow):
         lbl_titulo.setStyleSheet("font-size: 20px; font-weight: bold; color: #0F172A; margin-bottom: 10px;")
         layout.addWidget(lbl_titulo)
 
-        # Buscador
         self.txt_buscar_gestion = QLineEdit()
         self.txt_buscar_gestion.setPlaceholderText("🔍 Buscar usuario por cédula o matrícula...")
         self.txt_buscar_gestion.setStyleSheet("font-size: 16px; padding: 8px; border: 2px solid #CBD5E1; border-radius: 6px;")
         self.txt_buscar_gestion.textChanged.connect(self.actualizar_tabla_usuarios)
         layout.addWidget(self.txt_buscar_gestion)
 
-        # Tabla de usuarios
         self.tabla_usuarios = QTableWidget(0, 6)
         self.tabla_usuarios.setHorizontalHeaderLabels(["Cédula", "Matrícula", "Nombre", "Tipo", "Carrera", "Acciones"])
         self.tabla_usuarios.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
         self.tabla_usuarios.horizontalHeader().setSectionResizeMode(5, QHeaderView.ResizeMode.ResizeToContents)
         layout.addWidget(self.tabla_usuarios)
         
-        # Cargar los datos la primera vez
         self.actualizar_tabla_usuarios()
 
     def actualizar_tabla_usuarios(self):
@@ -831,37 +877,32 @@ class SistemaBiblioteca(QMainWindow):
             for row_idx, row in enumerate(usuarios):
                 self.tabla_usuarios.insertRow(row_idx)
                 
-                # row: [0]id, [1]cedula, [2]matricula, [3]nombre, [4]tipo, [5]carrera, [6]bloqueado
                 self.tabla_usuarios.setItem(row_idx, 0, QTableWidgetItem(str(row[1] or "")))
                 self.tabla_usuarios.setItem(row_idx, 1, QTableWidgetItem(str(row[2] or "")))
                 self.tabla_usuarios.setItem(row_idx, 2, QTableWidgetItem(str(row[3] or "")))
                 self.tabla_usuarios.setItem(row_idx, 3, QTableWidgetItem(str(row[4] or "")))
                 self.tabla_usuarios.setItem(row_idx, 4, QTableWidgetItem(str(row[5] or "")))
                 
-                # Crear widget con los 3 botones para la celda de acciones
                 widget_acciones = QWidget()
                 lay_acciones = QHBoxLayout(widget_acciones)
                 lay_acciones.setContentsMargins(5, 2, 5, 2)
                 
-                # Botón Editar
                 btn_editar = QPushButton("Editar")
                 btn_editar.setStyleSheet("background-color: #F59E0B; color: white; padding: 4px 8px; border-radius: 4px; font-weight: bold;")
                 btn_editar.clicked.connect(lambda checked, datos=row: self.editar_usuario(datos))
                 
-                # Botón Borrar
                 btn_borrar = QPushButton("Borrar")
                 btn_borrar.setStyleSheet("background-color: #EF4444; color: white; padding: 4px 8px; border-radius: 4px; font-weight: bold;")
                 btn_borrar.clicked.connect(lambda checked, uid=row[0]: self.borrar_usuario(uid))
                 
-                # Botón Bloquear/Desbloquear
                 btn_bloquear = QPushButton()
                 esta_bloqueado = row[6]
                 if esta_bloqueado:
                     btn_bloquear.setText("Desbloquear")
-                    btn_bloquear.setStyleSheet("background-color: #3B82F6; color: white; padding: 4px 8px; border-radius: 4px; font-weight: bold;") # Azul
+                    btn_bloquear.setStyleSheet("background-color: #3B82F6; color: white; padding: 4px 8px; border-radius: 4px; font-weight: bold;")
                 else:
                     btn_bloquear.setText("Bloquear")
-                    btn_bloquear.setStyleSheet("background-color: #6B7280; color: white; padding: 4px 8px; border-radius: 4px; font-weight: bold;") # Gris
+                    btn_bloquear.setStyleSheet("background-color: #6B7280; color: white; padding: 4px 8px; border-radius: 4px; font-weight: bold;")
                 
                 btn_bloquear.clicked.connect(lambda checked, uid=row[0], estado=esta_bloqueado: self.bloquear_usuario(uid, estado))
                 
@@ -874,11 +915,9 @@ class SistemaBiblioteca(QMainWindow):
             print("Error cargando usuarios:", e)
 
     def editar_usuario(self, datos_usuario):
-        # Abre la ventana con los datos del usuario para modificarlos
         dialogo = DialogoEditarUsuario(datos_usuario, self)
         if dialogo.exec() == QDialog.DialogCode.Accepted:
             nuevos_datos = dialogo.obtener_datos()
-            # nuevos_datos = (cedula, matricula, nombre, tipo, carrera)
             try:
                 base_datos.actualizar_usuario(datos_usuario[0], *nuevos_datos)
                 QMessageBox.information(self, "Éxito", "Usuario actualizado correctamente.")
@@ -895,7 +934,6 @@ class SistemaBiblioteca(QMainWindow):
         btn_aceptar = msg.addButton("Aceptar", QMessageBox.ButtonRole.AcceptRole)
         btn_cancelar = msg.addButton("Cancelar", QMessageBox.ButtonRole.RejectRole)
         
-        # Colores solicitados
         btn_aceptar.setStyleSheet("background-color: red; color: white; padding: 5px 15px; font-weight: bold;")
         btn_cancelar.setStyleSheet("background-color: green; color: white; padding: 5px 15px; font-weight: bold;")
         
@@ -912,6 +950,6 @@ class SistemaBiblioteca(QMainWindow):
     def bloquear_usuario(self, id_usuario, estado_actual):
         try:
             base_datos.alternar_bloqueo_usuario(id_usuario, estado_actual)
-            self.actualizar_tabla_usuarios() # Recarga la tabla para reflejar el cambio de color y texto
+            self.actualizar_tabla_usuarios()
         except Exception as e:
             QMessageBox.critical(self, "Error", f"No se pudo cambiar el estado de bloqueo.\nDetalle: {e}")
