@@ -3,7 +3,7 @@ import subprocess
 from PyQt6.QtWidgets import QLineEdit
 
 # =====================================================================
-# 2. COMPONENTES TÁCTILES PERSONALIZADOS
+# COMPONENTES TÁCTILES PERSONALIZADOS
 # =====================================================================
 def abrir_teclado_virtual():
     try:
