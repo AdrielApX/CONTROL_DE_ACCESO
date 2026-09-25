@@ -1,7 +1,7 @@
 import psycopg2
 
 # Tu conexión real al servidor de Neon.tech
-DB_URL = "postgresql://neondb_owner:npg_4owufargSh5c@ep-sparkling-cloud-ate9kxrl.c-9.us-east-1.aws.neon.tech/neondb?sslmode=require"
+DB_URL = ""
 
 def obtener_conexion():
     return psycopg2.connect(DB_URL)
