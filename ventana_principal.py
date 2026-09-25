@@ -1,5 +1,7 @@
 import traceback
 import psycopg2
+import time
+import ctypes  # <-- Agregado
 from datetime import datetime, timedelta
 
 from PyQt6.QtWidgets import (
@@ -8,12 +10,80 @@ from PyQt6.QtWidgets import (
     QTableWidgetItem, QStackedWidget, QFormLayout, QHeaderView, 
     QMessageBox, QDialog, QGridLayout, QFrame, QSizePolicy, QCheckBox
 )
-from PyQt6.QtCore import Qt, QRegularExpression
-from PyQt6.QtGui import QPixmap, QRegularExpressionValidator, QValidator
+from PyQt6.QtCore import Qt, QRegularExpression, QThread, pyqtSignal
+from PyQt6.QtGui import QPixmap, QRegularExpressionValidator, QValidator, QIcon
 from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill
 
 import base_datos
+
+import sys
+import os
+
+def resource_path(relative_path):
+    """Obtiene la ruta absoluta al recurso para compatibilidad con PyInstaller"""
+    try:
+        base_path = sys._MEIPASS
+    except Exception:
+        base_path = os.path.abspath(".")
+    return os.path.join(base_path, relative_path)
+
+# Configurar el ID de la aplicación para aislar el icono en la barra de tareas
+myappid = 'itla.biblioteca.control_acceso.v1'
+ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(myappid)
+
+# =====================================================================
+# HILO SECUNDARIO PARA BASE DE DATOS (EVITA QUE SE CONGELE LA APP)
+# =====================================================================
+class WorkerDB(QThread):
+    finished = pyqtSignal(object, object)  # Emite (resultado, error)
+
+    def __init__(self, func, *args, **kwargs):
+        super().__init__()
+        self.func = func
+        self.args = args
+        self.kwargs = kwargs
+
+    def run(self):
+        try:
+            # Cooldown de 3 segundos exigido antes de enviar la petición
+            time.sleep(3) 
+            res = self.func(*self.args, **self.kwargs)
+            self.finished.emit(res, None)
+        except Exception as e:
+            self.finished.emit(None, e)
+
+# =====================================================================
+# DIÁLOGO DE CARGA (PANTALLA DE ESPERA)
+# =====================================================================
+class DialogoCarga(QDialog):
+    def __init__(self, mensaje="Procesando...", parent=None):
+        super().__init__(parent)
+        self.setWindowFlags(Qt.WindowType.FramelessWindowHint | Qt.WindowType.Dialog)
+        self.setModal(True)
+        self.setFixedSize(320, 150)
+        self.setStyleSheet("""
+            QDialog {
+                background-color: #1E293B; 
+                border-radius: 12px; 
+                border: 2px solid #0EA5E9;
+            }
+        """)
+
+        layout = QVBoxLayout(self)
+        
+        self.lbl_icono = QLabel("⏳")
+        self.lbl_icono.setStyleSheet("font-size: 45px; color: white; background: transparent; border: none;")
+        self.lbl_icono.setAlignment(Qt.AlignmentFlag.AlignCenter)
+
+        self.lbl_mensaje = QLabel(mensaje)
+        self.lbl_mensaje.setStyleSheet("color: white; font-size: 16px; font-weight: bold; background: transparent; border: none;")
+        self.lbl_mensaje.setAlignment(Qt.AlignmentFlag.AlignCenter)
+
+        layout.addStretch()
+        layout.addWidget(self.lbl_icono)
+        layout.addWidget(self.lbl_mensaje)
+        layout.addStretch()
 
 # =====================================================================
 # DIÁLOGO DE EDICIÓN DE USUARIO
@@ -70,7 +140,11 @@ class DialogoEditarUsuario(QDialog):
 class SistemaBiblioteca(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("UTESA Plus - Control de Acceso Salón de Lectura")
+        self.setWindowTitle("Control de Acceso Salón de Lectura")
+
+        # Establecer el icono de la ventana principal asegurando la ruta correcta
+        self.setWindowIcon(QIcon(resource_path("iniciar-sesion_2.ico")))
+
         self.resize(1300, 750)
         
         self.usuario_actual_prestamo = None
