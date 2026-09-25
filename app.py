@@ -1,4 +1,5 @@
 import sys
+import os
 from PyQt6.QtWidgets import QApplication
 from PyQt6.QtGui import QPalette, QColor
 
@@ -6,6 +7,14 @@ from PyQt6.QtGui import QPalette, QColor
 import base_datos
 from ventana_principal import SistemaBiblioteca
 
+def resource_path(relative_path):
+    """Obtiene la ruta absoluta al recurso, compatible con desarrollo y PyInstaller"""
+    try:
+        # PyInstaller crea una carpeta temporal y guarda la ruta en _MEIPASS
+        base_path = sys._MEIPASS
+    except Exception:
+        base_path = os.path.abspath(".")
+    return os.path.join(base_path, relative_path)
 # =====================================================================
 # INICIAR APLICACIÓN
 # =====================================================================
