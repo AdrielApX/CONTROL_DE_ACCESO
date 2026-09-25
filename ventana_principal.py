@@ -1,7 +1,5 @@
 import traceback
 import psycopg2
-import time
-import ctypes  # <-- Agregado
 from datetime import datetime, timedelta
 
 from PyQt6.QtWidgets import (
@@ -10,80 +8,12 @@ from PyQt6.QtWidgets import (
     QTableWidgetItem, QStackedWidget, QFormLayout, QHeaderView, 
     QMessageBox, QDialog, QGridLayout, QFrame, QSizePolicy, QCheckBox
 )
-from PyQt6.QtCore import Qt, QRegularExpression, QThread, pyqtSignal
-from PyQt6.QtGui import QPixmap, QRegularExpressionValidator, QValidator, QIcon
+from PyQt6.QtCore import Qt, QRegularExpression
+from PyQt6.QtGui import QPixmap, QRegularExpressionValidator, QValidator
 from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill
 
 import base_datos
-
-import sys
-import os
-
-def resource_path(relative_path):
-    """Obtiene la ruta absoluta al recurso para compatibilidad con PyInstaller"""
-    try:
-        base_path = sys._MEIPASS
-    except Exception:
-        base_path = os.path.abspath(".")
-    return os.path.join(base_path, relative_path)
-
-# Configurar el ID de la aplicación para aislar el icono en la barra de tareas
-myappid = 'itla.biblioteca.control_acceso.v1'
-ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(myappid)
-
-# =====================================================================
-# HILO SECUNDARIO PARA BASE DE DATOS (EVITA QUE SE CONGELE LA APP)
-# =====================================================================
-class WorkerDB(QThread):
-    finished = pyqtSignal(object, object)  # Emite (resultado, error)
-
-    def __init__(self, func, *args, **kwargs):
-        super().__init__()
-        self.func = func
-        self.args = args
-        self.kwargs = kwargs
-
-    def run(self):
-        try:
-            # Cooldown de 3 segundos exigido antes de enviar la petición
-            time.sleep(3) 
-            res = self.func(*self.args, **self.kwargs)
-            self.finished.emit(res, None)
-        except Exception as e:
-            self.finished.emit(None, e)
-
-# =====================================================================
-# DIÁLOGO DE CARGA (PANTALLA DE ESPERA)
-# =====================================================================
-class DialogoCarga(QDialog):
-    def __init__(self, mensaje="Procesando...", parent=None):
-        super().__init__(parent)
-        self.setWindowFlags(Qt.WindowType.FramelessWindowHint | Qt.WindowType.Dialog)
-        self.setModal(True)
-        self.setFixedSize(320, 150)
-        self.setStyleSheet("""
-            QDialog {
-                background-color: #1E293B; 
-                border-radius: 12px; 
-                border: 2px solid #0EA5E9;
-            }
-        """)
-
-        layout = QVBoxLayout(self)
-        
-        self.lbl_icono = QLabel("⏳")
-        self.lbl_icono.setStyleSheet("font-size: 45px; color: white; background: transparent; border: none;")
-        self.lbl_icono.setAlignment(Qt.AlignmentFlag.AlignCenter)
-
-        self.lbl_mensaje = QLabel(mensaje)
-        self.lbl_mensaje.setStyleSheet("color: white; font-size: 16px; font-weight: bold; background: transparent; border: none;")
-        self.lbl_mensaje.setAlignment(Qt.AlignmentFlag.AlignCenter)
-
-        layout.addStretch()
-        layout.addWidget(self.lbl_icono)
-        layout.addWidget(self.lbl_mensaje)
-        layout.addStretch()
 
 # =====================================================================
 # DIÁLOGO DE EDICIÓN DE USUARIO
@@ -92,44 +22,29 @@ class DialogoEditarUsuario(QDialog):
     def __init__(self, datos, parent=None):
         super().__init__(parent)
         self.setWindowTitle("Editar Usuario")
-        self.setMinimumWidth(450)
+        self.setMinimumWidth(400)
         self.id_usuario = datos[0]
         
         layout = QVBoxLayout(self)
         form = QFormLayout()
         
-        self.txt_cedula = QLineEdit(str(datos[1]) if datos[1] else "")
-        
-        self.txt_matricula = QLineEdit(str(datos[2]) if datos[2] else "")
-        self.txt_matricula.setMaxLength(7) 
-        
-        self.txt_nombre = QLineEdit(str(datos[3]) if datos[3] else "")
-        
-        self.chk_extranjero = QCheckBox("Es Extranjero / ID Especial")
-        self.chk_extranjero.setStyleSheet("font-weight: bold; color: #0EA5E9;")
-        self.chk_extranjero.toggled.connect(self.alternar_validacion_cedula)
-
-        cedula_actual = str(datos[1]) if datos[1] else ""
-        if cedula_actual and (len(cedula_actual) != 11 or not cedula_actual.isdigit()):
-            self.chk_extranjero.setChecked(True)
+        self.txt_cedula = QLineEdit(datos[1])
+        self.txt_matricula = QLineEdit(datos[2])
+        self.txt_nombre = QLineEdit(datos[3])
         
         self.cmb_tipo = QComboBox()
         self.cmb_tipo.addItems(["Estudiante", "Profesor", "Empleado", "Invitado"])
-        self.cmb_tipo.setCurrentText(str(datos[4]) if datos[4] else "Estudiante")
+        self.cmb_tipo.setCurrentText(datos[4])
         
         self.cmb_carrera = QComboBox()
         carreras = ["", "Ninguna / No Aplica", "Administración de Empresas", "Ingeniería en Sistemas Computacionales", "Arquitectura", "Derecho", "Medicina", "Psicología"]
         self.cmb_carrera.addItems(carreras)
         self.cmb_carrera.setEditable(True)
-        self.cmb_carrera.setCurrentText(str(datos[5]) if datos[5] else "")
+        self.cmb_carrera.setCurrentText(datos[5] if datos[5] else "")
         
-        lay_ced = QHBoxLayout()
-        lay_ced.addWidget(self.txt_cedula)
-        lay_ced.addWidget(self.chk_extranjero)
-
-        form.addRow("Cédula / ID:", lay_ced)
+        form.addRow("Cédula:", self.txt_cedula)
         form.addRow("Matrícula:", self.txt_matricula)
-        form.addRow("Nombre Completo:", self.txt_nombre)
+        form.addRow("Nombre:", self.txt_nombre)
         form.addRow("Tipo:", self.cmb_tipo)
         form.addRow("Carrera:", self.cmb_carrera)
         
@@ -137,40 +52,8 @@ class DialogoEditarUsuario(QDialog):
         
         btn_guardar = QPushButton("Guardar Cambios")
         btn_guardar.setStyleSheet("background-color: #10B981; color: white; font-weight: bold; padding: 10px;")
-        btn_guardar.clicked.connect(self.validar_y_guardar)
+        btn_guardar.clicked.connect(self.accept)
         layout.addWidget(btn_guardar)
-
-    def alternar_validacion_cedula(self, es_extranjero):
-        if es_extranjero:
-            self.txt_cedula.setValidator(None)
-        else:
-            validador = QRegularExpressionValidator(QRegularExpression("^[0-9]{0,11}$"))
-            self.txt_cedula.setValidator(validador)
-
-    def validar_y_guardar(self):
-        cedula = self.txt_cedula.text().strip()
-        matricula = self.txt_matricula.text().strip()
-        nombre = self.txt_nombre.text().strip()
-
-        if not nombre:
-            QMessageBox.warning(self, "Atención", "El nombre del usuario no puede estar vacío.")
-            return
-
-        if cedula and not self.chk_extranjero.isChecked():
-            if len(cedula) != 11 or not cedula.isdigit():
-                QMessageBox.warning(self, "Cédula Inválida", "La Cédula Dominicana debe constar estrictamente de 11 dígitos numéricos.\nSi es un ID extranjero marque la casilla Extranjero.")
-                return
-
-        if matricula:
-            if len(matricula) != 7 or not matricula.isdigit():
-                QMessageBox.warning(self, "Matrícula Inválida", "La Matrícula debe constar estrictamente de 7 dígitos numéricos.")
-                return
-
-        if not cedula and not matricula:
-            QMessageBox.warning(self, "Identificador Requerido", "El usuario debe poseer al menos una Cédula o una Matrícula.")
-            return
-
-        self.accept()
 
     def obtener_datos(self):
         return (
@@ -182,16 +65,12 @@ class DialogoEditarUsuario(QDialog):
         )
 
 # =====================================================================
-# INTERFAZ PRINCIPAL
+# 3. INTERFAZ PRINCIPAL
 # =====================================================================
 class SistemaBiblioteca(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("Control de Acceso Salón de Lectura")
-
-        # Establecer el icono de la ventana principal asegurando la ruta correcta
-        self.setWindowIcon(QIcon(resource_path("iniciar-sesion_2.ico")))
-
+        self.setWindowTitle("UTESA Plus - Control de Acceso Salón de Lectura")
         self.resize(1300, 750)
         
         self.usuario_actual_prestamo = None
@@ -414,6 +293,7 @@ class SistemaBiblioteca(QMainWindow):
         self.nav_widget_kiosco.setLayout(self.barra_navegacion(1))
         layout_global.addWidget(self.nav_widget_kiosco)
         
+        # --- Selector de Recinto de Biblioteca ---
         self.lay_kiosco_top = QHBoxLayout()
         lbl_bib = QLabel("📍 Recinto Actual:")
         lbl_bib.setStyleSheet("font-weight: bold; font-size: 16px; color: #1E293B;")
@@ -465,7 +345,7 @@ class SistemaBiblioteca(QMainWindow):
         btn_k_registrar.setFixedSize(500, 90)
         btn_k_registrar.clicked.connect(lambda: self.kiosco_stack.setCurrentIndex(2))
         
-        self.btn_k_fullscreen = QPushButton("BLOQUEAR EN PANTALLA COMPLETA")
+        self.btn_k_fullscreen = QPushButton("🖵 BLOQUEAR EN PANTALLA COMPLETA")
         self.btn_k_fullscreen.setStyleSheet("background-color: #1E293B; color: white; font-size: 14px; font-weight: bold; border-radius: 8px; padding: 10px;")
         self.btn_k_fullscreen.setFixedSize(350, 45)
         self.btn_k_fullscreen.clicked.connect(self.alternar_pantalla_completa)
@@ -480,10 +360,15 @@ class SistemaBiblioteca(QMainWindow):
         
         self.kiosco_stack.addWidget(self.p_kiosco_inicio)
         
+        # =====================================================================
         # 2.2 KEYPAD DE INGRESO
+        # =====================================================================
         self.p_kiosco_ingreso = QWidget()
         lay_ing = QVBoxLayout(self.p_kiosco_ingreso) 
         lay_ing.setAlignment(Qt.AlignmentFlag.AlignCenter)
+
+        form_ingreso_layout = QVBoxLayout()
+        form_ingreso_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
         lbl_ing_tit = QLabel("Digite su Cédula o Matrícula")
         lbl_ing_tit.setStyleSheet("font-size: 24px; font-weight: bold; color: #1E293B;")
@@ -499,31 +384,25 @@ class SistemaBiblioteca(QMainWindow):
         btn_ing_aceptar.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         btn_ing_aceptar.clicked.connect(self.procesar_ingreso_salon)
 
-        self.btn_toggle_keypad = QPushButton("⌨️ Mostrar Teclado Numérico")
-        self.btn_toggle_keypad.setStyleSheet("background-color: #3B82F6; color: white; font-size: 16px; font-weight: bold; min-height: 40px; border-radius: 6px;")
-        self.btn_toggle_keypad.clicked.connect(self.alternar_keypad_ingreso)
-
         h_form_ing = QHBoxLayout()
         h_form_ing.addStretch(1)
         v_form_inner = QVBoxLayout()
         v_form_inner.addWidget(lbl_ing_tit, 0, Qt.AlignmentFlag.AlignCenter)
         v_form_inner.addWidget(self.txt_ingreso_id)
         v_form_inner.addWidget(btn_ing_aceptar)
-        v_form_inner.addWidget(self.btn_toggle_keypad)
         h_form_ing.addLayout(v_form_inner, 3) 
         h_form_ing.addStretch(1)
 
-        self.widget_keypad_container = QWidget()
-        grid_keypad = QGridLayout(self.widget_keypad_container)
+        grid_keypad = QGridLayout()
         grid_keypad.setSpacing(10)
         grid_keypad.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        
         botones_pad = ['1','2','3','4','5','6','7','8','9','Borrar','0','Limpiar']
         row, col = 0, 0
         for boton in botones_pad:
             btn_pad = QPushButton(boton)
             btn_pad.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-            btn_pad.setMinimumSize(80, 80)
+            btn_pad.setMinimumSize(90, 90)
+            btn_pad.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
             btn_pad.setStyleSheet("background-color: white; color: #1E293B; border: 2px solid #CBD5E1; font-size: 22px; font-weight: bold; border-radius: 10px;")
             btn_pad.clicked.connect(self.tecla_num_presionada)
             grid_keypad.addWidget(btn_pad, row, col)
@@ -531,8 +410,11 @@ class SistemaBiblioteca(QMainWindow):
             if col > 2:
                 col = 0
                 row += 1
-
-        self.widget_keypad_container.setVisible(False) 
+                
+        h_pad_ing = QHBoxLayout()
+        h_pad_ing.addStretch(1)
+        h_pad_ing.addLayout(grid_keypad, 2)
+        h_pad_ing.addStretch(1)
 
         btn_ing_volver = QPushButton("Volver Atrás")
         btn_ing_volver.setStyleSheet("background-color: #64748B; color: white; font-size: 16px; min-height: 45px;")
@@ -546,15 +428,17 @@ class SistemaBiblioteca(QMainWindow):
 
         lay_ing.addStretch(1)
         lay_ing.addLayout(h_form_ing)
-        lay_ing.addSpacing(15)
-        lay_ing.addWidget(self.widget_keypad_container, 0, Qt.AlignmentFlag.AlignCenter)
-        lay_ing.addSpacing(15)
+        lay_ing.addSpacing(30)
+        lay_ing.addLayout(h_pad_ing)
+        lay_ing.addSpacing(30)
         lay_ing.addLayout(h_volver_ing)
         lay_ing.addStretch(1)
 
         self.kiosco_stack.addWidget(self.p_kiosco_ingreso)
         
+        # =====================================================================
         # 2.3 REGISTRO TÁCTIL
+        # =====================================================================
         self.p_kiosco_registro = QWidget()
         lay_reg_maestro = QVBoxLayout(self.p_kiosco_registro)
         lay_reg_maestro.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -576,26 +460,28 @@ class SistemaBiblioteca(QMainWindow):
         form_reg = QFormLayout()
         form_reg.setSpacing(10)
         
-        self.validador_cedula_dom = QRegularExpressionValidator(QRegularExpression("^[0-9]{0,11}$"))
+        # --- NUEVO: Validadores ---
+        self.validador_solo_numeros = QRegularExpressionValidator(QRegularExpression("^[0-9]*$"))
         self.validador_alfanumerico = QRegularExpressionValidator(QRegularExpression("^[a-zA-Z0-9]*$"))
-        self.validador_matricula = QRegularExpressionValidator(QRegularExpression("^[0-9]{0,7}$"))
         self.validador_solo_letras = QRegularExpressionValidator(QRegularExpression("^[a-zA-ZáéíóúÁÉÍÓÚñÑ\s]*$"))
         
+        # --- Configuración de inputs ---
         estilo_input = "font-size: 16px; min-height: 40px; border: 2px solid #CBD5E1; border-radius: 6px; padding: 5px; background-color: white; color: #1E293B;"
         
         self.txt_reg_cedula = QLineEdit()
         self.txt_reg_cedula.setStyleSheet(estilo_input)
-        self.txt_reg_cedula.setValidator(self.validador_cedula_dom)
+        self.txt_reg_cedula.setValidator(self.validador_solo_numeros) 
         
         self.txt_reg_matricula = QLineEdit()
         self.txt_reg_matricula.setStyleSheet(estilo_input)
-        self.txt_reg_matricula.setValidator(self.validador_matricula)
+        self.txt_reg_matricula.setValidator(self.validador_solo_numeros) 
         
         self.txt_reg_nombre = QLineEdit()
         self.txt_reg_nombre.setStyleSheet(estilo_input)
-        self.txt_reg_nombre.setValidator(self.validador_solo_letras)
+        self.txt_reg_nombre.setValidator(self.validador_solo_letras) 
         
-        self.chk_extranjero = QCheckBox("Extranjero / ID Especial")
+        # --- Checkbox para Extranjero ---
+        self.chk_extranjero = QCheckBox("Extranjero")
         self.chk_extranjero.setStyleSheet("font-size: 14px; font-weight: bold; color: #1E293B;")
         self.chk_extranjero.toggled.connect(self.alternar_modo_cedula)
         
@@ -620,8 +506,8 @@ class SistemaBiblioteca(QMainWindow):
         self.cmb_reg_carrera.addItems(carreras_utesa)
         self.cmb_reg_carrera.setStyleSheet("background-color: white; color: #1E293B; font-size: 14px; min-height: 40px; border: 1px solid #CBD5E1;")
         
-        self.lbl_alerta_estudiante = QLabel("Para guardar se requiere Nombre Completo + Cédula o Matrícula")
-        self.lbl_alerta_estudiante.setStyleSheet("color: #0EA5E9; font-weight: bold; font-size: 12px;")
+        self.lbl_alerta_estudiante = QLabel("* Matrícula y Carrera obligatorias para Estudiantes")
+        self.lbl_alerta_estudiante.setStyleSheet("color: #EF4444; font-weight: bold; font-size: 12px;")
         
         form_reg.addRow(QLabel("Cédula o ID:"), lay_cedula)
         form_reg.addRow(QLabel("Matrícula:"), self.txt_reg_matricula)
@@ -631,11 +517,6 @@ class SistemaBiblioteca(QMainWindow):
         form_reg.addRow("", self.lbl_alerta_estudiante)
         col_form.addLayout(form_reg)
         
-        self.btn_toggle_qwerty = QPushButton("⌨️ Mostrar Teclado Táctil Completo")
-        self.btn_toggle_qwerty.setStyleSheet("background-color: #3B82F6; color: white; font-size: 15px; font-weight: bold; min-height: 40px; border-radius: 6px;")
-        self.btn_toggle_qwerty.clicked.connect(self.alternar_qwerty_registro)
-        col_form.addWidget(self.btn_toggle_qwerty)
-
         btn_reg_guardar = QPushButton("GUARDAR E INGRESAR")
         btn_reg_guardar.setStyleSheet("background-color: #10B981; color: white; font-size: 18px; font-weight: bold; min-height: 50px; border-radius: 8px;")
         btn_reg_guardar.clicked.connect(self.procesar_registro_usuario)
@@ -646,8 +527,10 @@ class SistemaBiblioteca(QMainWindow):
         h_form_reg.addWidget(container_form, 4)
         h_form_reg.addStretch(1)
 
-        self.widget_qwerty_container = QWidget()
-        grid_qwerty = QGridLayout(self.widget_qwerty_container)
+        # Teclado QWERTY
+        col_teclado = QVBoxLayout()
+        col_teclado.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        grid_qwerty = QGridLayout()
         grid_qwerty.setSpacing(5)
         grid_qwerty.setAlignment(Qt.AlignmentFlag.AlignCenter)
         
@@ -663,8 +546,9 @@ class SistemaBiblioteca(QMainWindow):
             for c_idx, tecla in enumerate(fila):
                 btn_tecla = QPushButton(tecla)
                 btn_tecla.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-                btn_tecla.setMinimumHeight(45)
-                btn_tecla.setStyleSheet("background-color: white; color: #1E293B; border: 1px solid #CBD5E1; font-size: 16px; font-weight: bold; border-radius: 6px;")
+                btn_tecla.setMinimumHeight(55)
+                btn_tecla.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+                btn_tecla.setStyleSheet("background-color: white; color: #1E293B; border: 1px solid #CBD5E1; font-size: 18px; font-weight: bold; border-radius: 6px;")
                 if tecla == 'Espacio':
                     grid_qwerty.addWidget(btn_tecla, r_idx, c_idx, 1, 4) 
                 elif tecla in ['Borrar', 'Limpiar']:
@@ -672,8 +556,8 @@ class SistemaBiblioteca(QMainWindow):
                 else:
                     grid_qwerty.addWidget(btn_tecla, r_idx, c_idx)
                 btn_tecla.clicked.connect(self.tecla_alfa_presionada)
-
-        self.widget_qwerty_container.setVisible(False) 
+        
+        col_teclado.addLayout(grid_qwerty)
         
         btn_reg_volver = QPushButton("Volver Atrás")
         btn_reg_volver.setStyleSheet("background-color: #64748B; color: white; font-size: 14px; min-height: 40px;")
@@ -687,27 +571,14 @@ class SistemaBiblioteca(QMainWindow):
 
         lay_reg_maestro.addStretch(1)
         lay_reg_maestro.addLayout(h_form_reg)
-        lay_reg_maestro.addSpacing(10)
-        lay_reg_maestro.addWidget(self.widget_qwerty_container)
-        lay_reg_maestro.addSpacing(10)
+        lay_reg_maestro.addSpacing(20)
+        lay_reg_maestro.addLayout(col_teclado)
+        lay_reg_maestro.addSpacing(20)
         lay_reg_maestro.addLayout(h_volver_reg)
         lay_reg_maestro.addStretch(1)
         
         self.kiosco_stack.addWidget(self.p_kiosco_registro)
         layout_global.addLayout(layout_kiosco_master)
-
-    # -----------------------------------------------------------------
-    # MÉTODOS DEL KIOSCO TÁCTIL
-    # -----------------------------------------------------------------
-    def alternar_keypad_ingreso(self):
-        es_visible = not self.widget_keypad_container.isVisible()
-        self.widget_keypad_container.setVisible(es_visible)
-        self.btn_toggle_keypad.setText("⌨️ Ocultar Teclado Numérico" if es_visible else "⌨️ Mostrar Teclado Numérico")
-
-    def alternar_qwerty_registro(self):
-        es_visible = not self.widget_qwerty_container.isVisible()
-        self.widget_qwerty_container.setVisible(es_visible)
-        self.btn_toggle_qwerty.setText("⌨️ Ocultar Teclado Táctil" if es_visible else "⌨️ Mostrar Teclado Táctil Completo")
 
     def activar_modo_kiosco(self):
         self.stacked_widget.setCurrentIndex(1)
@@ -728,17 +599,17 @@ class SistemaBiblioteca(QMainWindow):
             lay_d.addWidget(btn_d)
             
             if dialogo.exec() == QDialog.DialogCode.Accepted:
-                if txt_pass.text() == "@1234":
+                if txt_pass.text() == "1234":
                     self.showMaximized()
                     self.nav_widget_kiosco.show()
-                    self.btn_k_fullscreen.setText("BLOQUEAR EN PANTALLA COMPLETA")
+                    self.btn_k_fullscreen.setText("🖵 BLOQUEAR EN PANTALLA COMPLETA")
                     self.btn_k_fullscreen.setStyleSheet("background-color: #1E293B; color: white; font-size: 16px; font-weight: bold; border-radius: 8px; padding: 15px;")
                 else:
                     QMessageBox.critical(self, "Error", "Clave incorrecta")
         else:
             self.showFullScreen()
             self.nav_widget_kiosco.hide()
-            self.btn_k_fullscreen.setText("SALIR DE PANTALLA COMPLETA")
+            self.btn_k_fullscreen.setText("🔓 DESBLOQUEAR Y SALIR DE PANTALLA COMPLETA")
             self.btn_k_fullscreen.setStyleSheet("background-color: #EF4444; color: white; font-size: 16px; font-weight: bold; border-radius: 8px; padding: 15px;")
 
     def verificar_cambio_biblioteca(self, index):
@@ -755,7 +626,7 @@ class SistemaBiblioteca(QMainWindow):
             btn_d.clicked.connect(dialogo.accept)
             lay_d.addWidget(btn_d)
             
-            if dialogo.exec() == QDialog.DialogCode.Accepted and txt_pass.text() == "@1234":
+            if dialogo.exec() == QDialog.DialogCode.Accepted and txt_pass.text() == "1234":
                 self.index_biblioteca_anterior = index
             else:
                 QMessageBox.warning(self, "Acceso Denegado", "Clave incorrecta. El recinto no se ha modificado.")
@@ -769,7 +640,7 @@ class SistemaBiblioteca(QMainWindow):
         if es_extranjero:
             self.txt_reg_cedula.setValidator(self.validador_alfanumerico)
         else:
-            self.txt_reg_cedula.setValidator(self.validador_cedula_dom)
+            self.txt_reg_cedula.setValidator(self.validador_solo_numeros)
             texto_actual = self.txt_reg_cedula.text()
             if not texto_actual.isdigit():
                 self.txt_reg_cedula.clear()
@@ -788,6 +659,7 @@ class SistemaBiblioteca(QMainWindow):
             return
             
         nuevo_texto = texto_actual + texto_tecla
+        
         validador = widget_activo.validator()
         if validador:
             estado, _, _ = validador.validate(nuevo_texto, len(nuevo_texto))
@@ -824,10 +696,10 @@ class SistemaBiblioteca(QMainWindow):
 
     def evaluar_obligatoriedad_estudiante(self, tipo):
         if tipo == "Estudiante":
-            self.lbl_alerta_estudiante.setText("* Se requiere Nombre + Cédula o Matrícula")
-            self.lbl_alerta_estudiante.setStyleSheet("color: #0EA5E9; font-weight: bold;")
+            self.lbl_alerta_estudiante.setText("* Matrícula y Carrera obligatorias")
+            self.lbl_alerta_estudiante.setStyleSheet("color: #EF4444; font-weight: bold;")
         else:
-            self.lbl_alerta_estudiante.setText("Cédula o ID obligatorios para identificación")
+            self.lbl_alerta_estudiante.setText("Matrícula y Carrera opcionales")
             self.lbl_alerta_estudiante.setStyleSheet("color: #64748B;")
 
     def limpiar_volver_kiosco(self):
@@ -838,15 +710,8 @@ class SistemaBiblioteca(QMainWindow):
         self.cmb_reg_tipo.setCurrentIndex(0)
         self.cmb_reg_carrera.setCurrentIndex(0)
         self.chk_extranjero.setChecked(False)
-        self.widget_keypad_container.setVisible(False)
-        self.widget_qwerty_container.setVisible(False)
-        self.btn_toggle_keypad.setText("⌨️ Mostrar Teclado Numérico")
-        self.btn_toggle_qwerty.setText("⌨️ Mostrar Teclado Táctil Completo")
         self.kiosco_stack.setCurrentIndex(0)
 
-    # =================================================================
-    # PROCESOS ASÍNCRONOS CON LA BASE DE DATOS Y PANTALLA DE CARGA
-    # =================================================================
     def procesar_ingreso_salon(self):
         biblioteca = self.cmb_kiosco_biblioteca.currentText()
         if self.cmb_kiosco_biblioteca.currentIndex() == 0:
@@ -855,42 +720,22 @@ class SistemaBiblioteca(QMainWindow):
 
         ident = self.txt_ingreso_id.text().strip()
         if not ident: return
-
-        # MOSTRAR CARGA Y ARRANCAR HILO
-        self.dialogo_carga = DialogoCarga("Verificando Acceso...", self)
-        
-        self.worker_ingreso = WorkerDB(self._ejecutar_ingreso_bd, ident, biblioteca)
-        self.worker_ingreso.finished.connect(self._resultado_ingreso)
-        self.worker_ingreso.start()
-        
-        self.dialogo_carga.exec() # Se congela solo el modal visual, no la aplicación
-
-    def _ejecutar_ingreso_bd(self, ident, biblioteca):
         res = base_datos.buscar_usuario(ident)
         if res:
-            esta_bloqueado = res[4] if len(res) > 4 else False
+            esta_bloqueado = False
+            if len(res) > 4: 
+                esta_bloqueado = res[4]
+                
             if esta_bloqueado:
-                return {"status": "bloqueado"}
+                QMessageBox.warning(self, "Acceso Denegado", "Tiene el acceso bloqueado.")
+                self.limpiar_volver_kiosco()
+                return
+                
             base_datos.registrar_acceso(res[0], biblioteca)
-            return {"status": "ok", "nombre": res[1]}
-        return {"status": "no_encontrado"}
-
-    def _resultado_ingreso(self, res, error):
-        self.dialogo_carga.accept() # Cierra el mensaje de espera
-        
-        if error:
-            QMessageBox.critical(self, "Error de Conexión", f"Fallo al conectar con la base de datos:\n{error}")
-            self.txt_ingreso_id.clear()
-            return
-
-        if res["status"] == "bloqueado":
-            QMessageBox.warning(self, "Acceso Denegado", "Tiene el acceso bloqueado.")
-        elif res["status"] == "ok":
-            QMessageBox.information(self, "Adelante", f"Bienvenido/a {res['nombre']}")
+            QMessageBox.information(self, "Adelante", f"Bienvenido/a {res[1]}")
+            self.limpiar_volver_kiosco()
         else:
-            QMessageBox.warning(self, "Error", "ID o Matrícula no registrada. Vaya a Nuevo Usuario.")
-            
-        self.txt_ingreso_id.clear()
+            QMessageBox.warning(self, "Error", "ID no registrada. Vaya a Nuevo Usuario.")
 
     def procesar_registro_usuario(self):
         biblioteca = self.cmb_kiosco_biblioteca.currentText()
@@ -906,51 +751,21 @@ class SistemaBiblioteca(QMainWindow):
         carrera = self.cmb_reg_carrera.currentText()
         if carrera == "Seleccione una carrera... (Opcional)" or carrera == "Ninguna / No Aplica":
             carrera = ""
-
-        if not nombre: 
-            QMessageBox.warning(self, "Campo Faltante", "El Nombre Completo es un campo obligatorio.")
-            return
-
-        if not cedula and not matricula:
-            QMessageBox.warning(self, "Campo Faltante", "Debe colocar al menos un identificador (Cédula/ID o Matrícula).")
-            return
-
-        if cedula and not self.chk_extranjero.isChecked():
-            if len(cedula) != 11 or not cedula.isdigit():
-                QMessageBox.warning(self, "Cédula Inválida", "La Cédula Dominicana debe contener exactamente 11 dígitos numéricos.\nSi posee un documento extranjero, marque la opción 'Extranjero'.")
-                return
-
-        if matricula:
-            if len(matricula) != 7 or not matricula.isdigit():
-                QMessageBox.warning(self, "Matrícula Inválida", "La Matrícula debe contener exactamente 7 dígitos numéricos.")
-                return
-
-        # MOSTRAR CARGA Y ARRANCAR HILO
-        self.dialogo_carga = DialogoCarga("Guardando Usuario...", self)
         
-        self.worker_registro = WorkerDB(base_datos.registrar_nuevo_usuario, cedula, matricula, nombre, tipo, carrera, biblioteca)
-        self.worker_registro.finished.connect(self._resultado_registro)
-        self.worker_registro.start()
-
-        self.dialogo_carga.exec()
-
-    def _resultado_registro(self, res, error):
-        self.dialogo_carga.accept() # Cierra el mensaje de espera
-
-        if error:
-            error_str = str(error).lower()
-            if "duplicate key" in error_str or "ya existe" in error_str or "ya pertenece" in error_str:
-                QMessageBox.critical(self, "Error de Duplicidad", "Esa Cédula o Matrícula ya pertenece a otro usuario en la base de datos.")
-            else:
-                QMessageBox.critical(self, "Error", str(error))
-        else:
-            QMessageBox.information(self, "Éxito", "¡Registro completado exitosamente!")
-            self.txt_reg_cedula.clear()
-            self.txt_reg_matricula.clear()
-            self.txt_reg_nombre.clear()
-            self.cmb_reg_tipo.setCurrentIndex(0)
-            self.cmb_reg_carrera.setCurrentIndex(0)
-            self.chk_extranjero.setChecked(False)
+        if not cedula or not nombre: 
+            QMessageBox.warning(self, "Aviso", "La Cédula y el Nombre son campos obligatorios.")
+            return
+            
+        if tipo == "Estudiante" and (not matricula or not carrera):
+            QMessageBox.warning(self, "Aviso", "Indique su Matrícula y Carrera (Obligatorio para Estudiantes).")
+            return
+            
+        try:
+            base_datos.registrar_nuevo_usuario(cedula, matricula, nombre, tipo, carrera, biblioteca)
+            QMessageBox.information(self, "Éxito", f"¡Registro completado {nombre}!")
+            self.limpiar_volver_kiosco()
+        except psycopg2.IntegrityError:
+            QMessageBox.critical(self, "Error", "Esa Cédula o Matrícula ya existe en el sistema.")
 
     # -----------------------------------------------------------------
     # VISTA 3: MÉTRICAS Y EXCEL
@@ -1040,13 +855,13 @@ class SistemaBiblioteca(QMainWindow):
         layout.addWidget(lbl_titulo)
 
         self.txt_buscar_gestion = QLineEdit()
-        self.txt_buscar_gestion.setPlaceholderText("Buscar usuario por Cédula, Matrícula, Nombre o Apellido...")
+        self.txt_buscar_gestion.setPlaceholderText("🔍 Buscar usuario por cédula o matrícula...")
         self.txt_buscar_gestion.setStyleSheet("font-size: 16px; padding: 8px; border: 2px solid #CBD5E1; border-radius: 6px;")
         self.txt_buscar_gestion.textChanged.connect(self.actualizar_tabla_usuarios)
         layout.addWidget(self.txt_buscar_gestion)
 
         self.tabla_usuarios = QTableWidget(0, 6)
-        self.tabla_usuarios.setHorizontalHeaderLabels(["Cédula / ID", "Matrícula", "Nombre Completo", "Tipo", "Carrera", "Acciones"])
+        self.tabla_usuarios.setHorizontalHeaderLabels(["Cédula", "Matrícula", "Nombre", "Tipo", "Carrera", "Acciones"])
         self.tabla_usuarios.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
         self.tabla_usuarios.horizontalHeader().setSectionResizeMode(5, QHeaderView.ResizeMode.ResizeToContents)
         layout.addWidget(self.tabla_usuarios)
@@ -1113,7 +928,7 @@ class SistemaBiblioteca(QMainWindow):
     def borrar_usuario(self, id_usuario):
         msg = QMessageBox(self)
         msg.setWindowTitle("Confirmar Eliminación")
-        msg.setText("¿Deseas eliminar este usuario?")
+        msg.setText("¿Deseas eliminar ese usuario?")
         msg.setIcon(QMessageBox.Icon.Warning)
         
         btn_aceptar = msg.addButton("Aceptar", QMessageBox.ButtonRole.AcceptRole)
